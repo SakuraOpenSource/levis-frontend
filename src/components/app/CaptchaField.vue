@@ -58,10 +58,15 @@ defineExpose({ refresh })
 <template>
   <div class="space-y-2">
     <Label :for="props.id">{{ t('auth.captcha') }}</Label>
-    <div class="flex items-center gap-2">
+    <!--
+      允许换行：8 位验证码的图宽近 4 位的两倍，窄屏上与输入框并排会挤不下。
+      输入框留了最小宽度，排不下时整张图自动落到下一行，而不是把图压窄。
+    -->
+    <div class="flex flex-wrap items-center gap-2">
       <Input
         :id="props.id"
         v-model="code"
+        class="min-w-32 flex-1"
         :placeholder="t('auth.captchaPlaceholder')"
         :inputmode="props.charset === 'digit' ? 'numeric' : 'text'"
         autocomplete="off"
@@ -74,16 +79,20 @@ defineExpose({ refresh })
       <!-- 图片本身就是刷新按钮：看不清时点一下换一张，这是用户的直觉动作。 -->
       <button
         type="button"
-        class="border-input bg-muted focus-visible:ring-ring/50 relative h-9 w-28 shrink-0 overflow-hidden rounded-md border transition-opacity hover:opacity-80 focus-visible:ring-[3px] focus-visible:outline-none disabled:opacity-50"
+        class="border-input bg-muted focus-visible:ring-ring/50 relative flex h-12 min-w-24 max-w-full items-center justify-center overflow-hidden rounded-md border transition-opacity hover:opacity-80 focus-visible:ring-[3px] focus-visible:outline-none disabled:opacity-50"
         :title="t('auth.captchaRefresh')"
         :aria-label="t('auth.captchaRefresh')"
         :disabled="loading || props.disabled"
         @click="refresh"
       >
-        <img v-if="image" :src="image" alt="" class="h-full w-full object-cover" />
+        <!--
+          宽度交给图片自己定（w-auto + 原始宽高比），不能用固定宽度配
+          object-cover —— 位数一改宽高比就变，固定宽度会把字符裁掉。
+        -->
+        <img v-if="image" :src="image" alt="" class="h-full w-auto max-w-full object-contain" />
         <RefreshCw
           v-else
-          class="text-muted-foreground absolute inset-0 m-auto size-4"
+          class="text-muted-foreground size-4"
           :class="{ 'animate-spin': loading }"
         />
       </button>
