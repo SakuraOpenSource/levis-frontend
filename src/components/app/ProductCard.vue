@@ -27,6 +27,8 @@ const soldOut = computed(() => props.product.stock === 0)
 const stockText = computed(() =>
   props.product.stock < 0 ? t('common.unlimited') : String(props.product.stock),
 )
+/** 历史商品没有规格字段，后端会返回 null。 */
+const specs = computed(() => props.product.specs ?? [])
 </script>
 
 <template>
@@ -42,6 +44,14 @@ const stockText = computed(() =>
     </CardHeader>
 
     <CardContent class="px-5">
+      <!-- 规格行：左侧名称固定宽度，右侧内容右对齐，多张卡片并排时列能对齐 -->
+      <dl v-if="specs.length" class="mb-4 space-y-1.5 text-sm">
+        <div v-for="(spec, index) in specs" :key="index" class="flex items-baseline gap-3">
+          <dt class="text-muted-foreground w-16 shrink-0 text-xs">{{ spec.label }}</dt>
+          <dd class="min-w-0 flex-1 break-words text-right">{{ spec.value }}</dd>
+        </div>
+      </dl>
+
       <p class="text-xl font-semibold tabular">
         {{ priceLabel(props.product.price_cents, props.product.billing_cycle) }}
       </p>

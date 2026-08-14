@@ -46,10 +46,18 @@ export interface User extends Timestamps {
   status: UserStatus
 }
 
+/** Spec 是商品的一条展示规格，如 { label: 'CPU', value: '4 核' }。 */
+export interface Spec {
+  label: string
+  value: string
+}
+
 export interface Product extends Timestamps {
   category_id: number
   name: string
   description: string
+  /** 后端可能返回 null（历史数据或空列表）。 */
+  specs: Spec[] | null
   price_cents: number
   billing_cycle: BillingCycle
   /** 负数表示库存不限。 */
@@ -205,6 +213,7 @@ export interface ProductInput {
   category_id: number
   name: string
   description: string
+  specs: Spec[]
   price_cents: number
   billing_cycle: BillingCycle
   stock: number

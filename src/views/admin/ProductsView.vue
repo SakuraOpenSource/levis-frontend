@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -37,7 +37,14 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
-import { BILLING_CYCLES, type BillingCycle, type Category, type Product, type ProductStatus } from '@/lib/types'
+import {
+  BILLING_CYCLES,
+  type BillingCycle,
+  type Category,
+  type Product,
+  type ProductStatus,
+  type Spec,
+} from '@/lib/types'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -71,6 +78,20 @@ const form = reactive({
   status: 'active' as ProductStatus,
   sort: '0',
 })
+
+/** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
+const specs = ref<Spec[]>([])
+/** 与后端 maxSpecs 一致，超出时提前挡掉而不是等 400。 */
+const MAX_SPECS = 20
+
+function addSpec() {
+  if (specs.value.length >= MAX_SPECS) return
+  specs.value.push({ label: '', value: '' })
+}
+
+function removeSpec(index: number) {
+  specs.value.splice(index, 1)
+}
 
 /** 分组下拉：大类直接显示，小类缩进一级，便于区分层级。 */
 const categoryOptions = computed(() => {
@@ -137,6 +158,7 @@ function openCreate() {
     status: 'active' as ProductStatus,
     sort: '0',
   })
+  specs.value = []
   dialogOpen.value = true
 }
 
@@ -153,6 +175,8 @@ function openEdit(item: Product) {
     status: item.status,
     sort: String(item.sort),
   })
+  // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
+  specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
   dialogOpen.value = true
 }
 
@@ -168,12 +192,18 @@ async function save() {
     formError.value = t('error.required')
     return
   }
+  // 全空行直接丢掉；只填一半的行留给后端报错，免得静默吞掉用户的输入。
+  const cleanSpecs = specs.value
+    .map((spec) => ({ label: spec.label.trim(), value: spec.value.trim() }))
+    .filter((spec) => spec.label !== '' || spec.value !== '')
+
   saving.value = true
   try {
     const payload = {
       category_id: Number(form.categoryId),
       name: form.name.trim(),
       description: form.description.trim(),
+      specs: cleanSpecs,
       price_cents: priceCents,
       billing_cycle: form.billingCycle,
       stock: Number(form.stock),
@@ -353,6 +383,46 @@ onMounted(async () => {
           <div class="space-y-2">
             <Label for="p-desc">{{ t('admin.productDescription') }}</Label>
             <Textarea id="p-desc" v-model="form.description" rows="3" />
+          </div>
+
+          <div class="space-y-2">
+            <Label>{{ t('admin.productSpecs') }}</Label>
+            <p class="text-muted-foreground text-xs">{{ t('admin.productSpecsHint') }}</p>
+
+            <div v-for="(spec, index) in specs" :key="index" class="flex items-center gap-2">
+              <Input
+                v-model="spec.label"
+                class="w-28 shrink-0"
+                :aria-label="t('admin.specLabel')"
+                :placeholder="t('admin.specLabelPlaceholder')"
+              />
+              <Input
+                v-model="spec.value"
+                :aria-label="t('admin.specValue')"
+                :placeholder="t('admin.specValuePlaceholder')"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                class="size-9 shrink-0"
+                :aria-label="t('admin.removeSpec')"
+                @click="removeSpec(index)"
+              >
+                <X />
+              </Button>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="specs.length >= MAX_SPECS"
+              @click="addSpec"
+            >
+              <Plus />
+              {{ t('admin.addSpec') }}
+            </Button>
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
