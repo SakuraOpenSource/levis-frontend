@@ -161,6 +161,11 @@ export interface PayResult {
   services: Service[]
 }
 
+export interface RenewResult {
+  service: Service
+  invoice: Invoice
+}
+
 export interface AdminStats {
   user_count: number
   product_count: number

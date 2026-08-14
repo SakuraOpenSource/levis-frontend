@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, Loader2, RefreshCcw } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -12,6 +12,7 @@ import StateBadge from '@/components/app/StateBadge.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useCycleLabel } from '@/composables/useCycleLabel'
+import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { serviceApi } from '@/lib/endpoints'
 import { formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
@@ -19,13 +20,20 @@ import type { Service } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
-const { cycleLabel } = useCycleLabel()
+const toast = useToast()
+const { cycleLabel, priceLabel } = useCycleLabel()
 
 const item = ref<Service | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const renewing = ref(false)
 
-onMounted(async () => {
+/** 只有使用中且非一次性付费的服务才有「续费」一说。 */
+const canRenew = computed(
+  () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
+)
+
+async function load() {
   try {
     item.value = await serviceApi.get(Number(route.params.id))
   } catch (err) {
@@ -33,13 +41,36 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+async function renew() {
+  if (!item.value) return
+  const price = priceLabel(item.value.price_cents, item.value.billing_cycle)
+  if (!window.confirm(t('services.renewConfirm', { price }))) return
+  renewing.value = true
+  try {
+    const result = await serviceApi.renew(item.value.id)
+    item.value = result.service
+    toast.success(t('services.renewed'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    renewing.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <template>
   <div class="space-y-6">
     <PageHeader :title="item?.name ?? t('services.detailTit')">
       <template #actions>
+        <Button v-if="canRenew" size="sm" :disabled="renewing" @click="renew">
+          <Loader2 v-if="renewing" class="animate-spin" />
+          <RefreshCcw v-else />
+          {{ t('services.renew') }}
+        </Button>
         <Button variant="outline" size="sm" as-child>
           <RouterLink :to="{ name: 'services' }">
             <ArrowLeft />

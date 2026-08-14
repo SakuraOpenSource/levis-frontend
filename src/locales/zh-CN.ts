@@ -200,6 +200,9 @@ export default {
     empty: '还没有已购买的产品',
     detailTit: '服务详情',
     orderId: '关联订单',
+    renew: '续费',
+    renewConfirm: '确定续费该服务？将从余额扣除 {price}。',
+    renewed: '续费成功',
   },
   wallet: {
     title: '钱包',
@@ -327,6 +330,17 @@ export default {
     deleteProductConfirm: '确定删除商品「{name}」？',
     filterByCategory: '按分组筛选',
     noCategoryYet: '请先创建至少一个分组',
+
+    viewProducts: '查看产品',
+    userServicesTitle: '{name} 的产品',
+    userServicesTitleRaw: '用户产品',
+    userServicesSubtitle: '管理该用户名下的服务实例',
+    suspend: '停用',
+    resume: '恢复',
+    suspendServiceConfirm: '确定停用服务「{name}」？',
+    suspended: '已停用',
+    resumed: '已恢复',
+    deleteServiceConfirm: '确定删除服务「{name}」？该操作不可撤销。',
   },
   cycle: {
     onetime: '一次性',

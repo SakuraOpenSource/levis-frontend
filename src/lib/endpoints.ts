@@ -14,7 +14,9 @@ import type {
   PayResult,
   Product,
   ProductInput,
+  RenewResult,
   Service,
+  ServiceStatus,
   Transaction,
   UpdateUserInput,
   User,
@@ -144,6 +146,10 @@ export const serviceApi = {
     const { data } = await http.get<Service>(`/services/${id}`)
     return data
   },
+  async renew(id: number) {
+    const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
+    return data
+  },
 }
 
 /** 钱包。 */
@@ -226,5 +232,18 @@ export const adminApi = {
   },
   async deleteProduct(id: number) {
     await http.delete(`/admin/products/${id}`)
+  },
+  async userServices(userId: number, query: PageQuery = {}) {
+    const { data } = await http.get<Page<Service>>(`/admin/users/${userId}/services`, {
+      params: query,
+    })
+    return data
+  },
+  async updateService(id: number, status: ServiceStatus) {
+    const { data } = await http.patch<Service>(`/admin/services/${id}`, { status })
+    return data
+  },
+  async deleteService(id: number) {
+    await http.delete(`/admin/services/${id}`)
   },
 }
