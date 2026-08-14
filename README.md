@@ -31,7 +31,7 @@ pnpm preview
 src/
 ├── main.ts              装 pinia / i18n / router，注入 401 处理器后挂载
 ├── router/index.ts      路由表 + 全局守卫（安装态、登录、管理员）
-├── stores/              auth, site, cart, theme
+├── stores/              auth, site, cart, theme, preferences
 ├── lib/
 │   ├── api.ts           axios 实例、CSRF 拦截器、ApiError 归一化
 │   ├── endpoints.ts     按模块分组的类型化接口封装
@@ -62,7 +62,7 @@ src/
 |---|---|
 | `/install` | 三步安装引导（数据库 → 站点信息 → 管理员），含测试连接 |
 | `/login` `/register` | 普通用户与管理员共用登录入口，按 role 决定落地页 |
-| `/shop` `/cart` `/checkout/:id?` | 商店（按大类 → 小类分组）、购物车、结账（模拟支付）。`/` 重定向到 `/shop` |
+| `/shop` `/cart` `/checkout/:id?` | 商店（列表视图按大类 → 小类平铺，导航视图先筛分组再看商品）、购物车、结账（模拟支付）。`/` 重定向到 `/shop` |
 | `/dashboard` | 用户中心主页：服务数、余额、未付账单，卡片可点击跳转 |
 | `/dashboard/services` `/dashboard/services/:id` | 已购买的产品 |
 | `/dashboard/wallet` `/dashboard/invoices` `/dashboard/invoices/:id` | 钱包与账单 |
