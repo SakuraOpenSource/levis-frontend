@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
-import { authApi } from '@/lib/endpoints'
+import { authApi, type CaptchaAnswer } from '@/lib/endpoints'
 import type { User } from '@/lib/types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -29,13 +29,15 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value
   }
 
-  async function login(identifier: string, password: string) {
-    user.value = await authApi.login(identifier, password)
+  async function login(identifier: string, password: string, captcha: CaptchaAnswer = {}) {
+    user.value = await authApi.login(identifier, password, captcha)
     resolved.value = true
     return user.value
   }
 
-  async function register(payload: { username: string; email: string; password: string }) {
+  async function register(
+    payload: { username: string; email: string; password: string } & CaptchaAnswer,
+  ) {
     user.value = await authApi.register(payload)
     resolved.value = true
     return user.value

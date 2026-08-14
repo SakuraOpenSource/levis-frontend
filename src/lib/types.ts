@@ -174,10 +174,49 @@ export interface AdminStats {
   revenue_cents: number
 }
 
+/** 验证码字符集：数字+字母 / 纯数字 / 纯字母。 */
+export type CaptchaCharset = 'mixed' | 'digit' | 'letter'
+
+export const CAPTCHA_CHARSETS: CaptchaCharset[] = ['mixed', 'digit', 'letter']
+
+/** 验证码位数的取值范围，与后端 internal/captcha 的 MinLength/MaxLength 一致。 */
+export const CAPTCHA_MIN_LENGTH = 4
+export const CAPTCHA_MAX_LENGTH = 8
+
+/** 管理端可配置的验证码设置。 */
+export interface CaptchaSettings {
+  login_enabled: boolean
+  register_enabled: boolean
+  charset: CaptchaCharset
+  length: number
+}
+
+/**
+ * 一次验证码挑战。image 是可直接塞进 <img src> 的 PNG data URL；
+ * 答案只留在服务端，前端拿不到也不需要。
+ */
+export interface CaptchaChallenge {
+  id: string
+  image: string
+  expires_in: number
+}
+
+/**
+ * bootstrap 里的验证码信息：只有开关与字符集。
+ * 位数不下发 —— 那是穷举时的关键信息，前端也用不到。
+ */
+export interface BootstrapCaptcha {
+  login: boolean
+  register: boolean
+  charset: CaptchaCharset
+}
+
 export interface Bootstrap {
   installed: boolean
   site_name: string
   site_description: string
+  /** 未安装时后端不返回该字段，因此是可选的。 */
+  captcha?: BootstrapCaptcha
 }
 
 export interface DatabaseConfig {

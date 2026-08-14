@@ -2,6 +2,8 @@ import { http } from './api'
 import type {
   AdminStats,
   Bootstrap,
+  CaptchaChallenge,
+  CaptchaSettings,
   CartView,
   Category,
   CategoryInput,
@@ -45,14 +47,34 @@ export const siteApi = {
   },
 }
 
+/** 图形验证码。签发接口无需登录 —— 登录、注册页正是在没有登录态时用它。 */
+export const captchaApi = {
+  async issue() {
+    const { data } = await http.get<CaptchaChallenge>('/captcha')
+    return data
+  },
+}
+
+/** 带验证码的表单额外要提交的字段。 */
+export interface CaptchaAnswer {
+  captcha_id?: string
+  captcha_code?: string
+}
+
 /** 认证与个人资料。 */
 export const authApi = {
-  async register(payload: { username: string; email: string; password: string }) {
+  async register(
+    payload: { username: string; email: string; password: string } & CaptchaAnswer,
+  ) {
     const { data } = await http.post<{ user: User }>('/auth/register', payload)
     return data.user
   },
-  async login(identifier: string, password: string) {
-    const { data } = await http.post<{ user: User }>('/auth/login', { identifier, password })
+  async login(identifier: string, password: string, captcha: CaptchaAnswer = {}) {
+    const { data } = await http.post<{ user: User }>('/auth/login', {
+      identifier,
+      password,
+      ...captcha,
+    })
     return data.user
   },
   async logout() {
@@ -245,5 +267,13 @@ export const adminApi = {
   },
   async deleteService(id: number) {
     await http.delete(`/admin/services/${id}`)
+  },
+  async captchaSettings() {
+    const { data } = await http.get<CaptchaSettings>('/admin/settings/captcha')
+    return data
+  },
+  async updateCaptchaSettings(payload: CaptchaSettings) {
+    const { data } = await http.put<CaptchaSettings>('/admin/settings/captcha', payload)
+    return data
   },
 }

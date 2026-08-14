@@ -122,6 +122,11 @@ const routes: RouteRecordRaw[] = [
         name: 'admin-products',
         component: () => import('@/views/admin/ProductsView.vue'),
       },
+      {
+        path: 'settings',
+        name: 'admin-settings',
+        component: () => import('@/views/admin/SettingsView.vue'),
+      },
     ],
   },
   {

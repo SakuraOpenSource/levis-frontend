@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { Loader2 } from 'lucide-vue-next'
 
+import CaptchaField from '@/components/app/CaptchaField.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,6 +23,8 @@ const cart = useCartStore()
 const site = useSiteStore()
 
 const form = reactive({ identifier: '', password: '' })
+const captcha = reactive({ id: '', code: '' })
+const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
 const submitting = ref(false)
 
@@ -31,9 +34,17 @@ async function submit() {
     error.value = t('error.required')
     return
   }
+  if (site.captchaLogin && !captcha.code.trim()) {
+    error.value = t('auth.captchaRequired')
+    return
+  }
   submitting.value = true
   try {
-    const user = await auth.login(form.identifier.trim(), form.password)
+    const user = await auth.login(
+      form.identifier.trim(),
+      form.password,
+      site.captchaLogin ? { captcha_id: captcha.id, captcha_code: captcha.code.trim() } : {},
+    )
     cart.load().catch(() => {})
 
     // 带 redirect 时优先回原目标；否则按角色决定落地页。
@@ -45,6 +56,8 @@ async function submit() {
     await router.replace({ name: user.role === 'admin' ? 'admin' : 'dashboard' })
   } catch (err) {
     error.value = errorMessage(err)
+    // 验证码是一次性的，哪怕这次是密码错也已经作废，必须换一张。
+    captchaField.value?.refresh()
   } finally {
     submitting.value = false
   }
@@ -83,6 +96,16 @@ async function submit() {
               required
             />
           </div>
+
+          <CaptchaField
+            v-if="site.captchaLogin"
+            ref="captchaField"
+            id="login-captcha"
+            v-model:challenge-id="captcha.id"
+            v-model:code="captcha.code"
+            :charset="site.captchaCharset"
+            :disabled="submitting"
+          />
 
           <Button type="submit" class="w-full" :disabled="submitting">
             <Loader2 v-if="submitting" class="animate-spin" />

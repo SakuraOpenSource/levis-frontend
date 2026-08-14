@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { Loader2 } from 'lucide-vue-next'
 
+import CaptchaField from '@/components/app/CaptchaField.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,8 @@ const auth = useAuthStore()
 const site = useSiteStore()
 
 const form = reactive({ username: '', email: '', password: '', confirm: '' })
+const captcha = reactive({ id: '', code: '' })
+const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
 const submitting = ref(false)
 
@@ -32,6 +35,10 @@ async function submit() {
     error.value = t('auth.passwordMismatch')
     return
   }
+  if (site.captchaRegister && !captcha.code.trim()) {
+    error.value = t('auth.captchaRequired')
+    return
+  }
   submitting.value = true
   try {
     // 后端注册接口固定 role=user，前端也不传任何角色字段。
@@ -39,10 +46,15 @@ async function submit() {
       username: form.username.trim(),
       email: form.email.trim(),
       password: form.password,
+      ...(site.captchaRegister
+        ? { captcha_id: captcha.id, captcha_code: captcha.code.trim() }
+        : {}),
     })
     await router.replace({ name: 'dashboard' })
   } catch (err) {
     error.value = errorMessage(err)
+    // 验证码是一次性的，这次提交已把它消耗掉，必须换一张再试。
+    captchaField.value?.refresh()
   } finally {
     submitting.value = false
   }
@@ -93,6 +105,16 @@ async function submit() {
               required
             />
           </div>
+
+          <CaptchaField
+            v-if="site.captchaRegister"
+            ref="captchaField"
+            id="register-captcha"
+            v-model:challenge-id="captcha.id"
+            v-model:code="captcha.code"
+            :charset="site.captchaCharset"
+            :disabled="submitting"
+          />
 
           <Button type="submit" class="w-full" :disabled="submitting">
             <Loader2 v-if="submitting" class="animate-spin" />

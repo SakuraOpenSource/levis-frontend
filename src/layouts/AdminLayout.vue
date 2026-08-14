@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { FolderTree, Gauge, Menu, Package, Store, Users } from 'lucide-vue-next'
+import { FolderTree, Gauge, Menu, Package, Settings, Store, Users } from 'lucide-vue-next'
 
 import SidebarNav, { type NavItem } from '@/components/app/SidebarNav.vue'
 import UserMenu from '@/components/app/UserMenu.vue'
@@ -26,6 +26,7 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-categories' },
   },
   { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
+  { key: 'settings', label: t('adminNav.settings'), icon: Settings, to: { name: 'admin-settings' } },
 ])
 
 watch(() => route.fullPath, () => (mobileOpen.value = false))
