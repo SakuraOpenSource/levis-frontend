@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-vue-next'
+import { Boxes, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -239,6 +239,19 @@ onMounted(() => load())
                 </TableCell>
                 <TableCell class="text-right">
                   <div class="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="size-8"
+                      :aria-label="t('admin.viewProducts')"
+                      as-child
+                    >
+                      <RouterLink
+                        :to="{ name: 'admin-user-services', params: { id: item.id }, query: { name: item.username } }"
+                      >
+                        <Boxes />
+                      </RouterLink>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
