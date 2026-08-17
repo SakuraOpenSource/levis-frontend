@@ -107,6 +107,21 @@ http.interceptors.response.use(
   },
 )
 
+/**
+ * 提交 multipart 表单。
+ *
+ * 必须清掉实例上默认的 application/json：axios 只有在没有该头时才会让浏览器
+ * 自己填 multipart/form-data 与 boundary。留着默认值的话请求体是 FormData、
+ * 头却写着 JSON，后端解不出表单，报出来的是个很难查的 400。
+ * 所有 FormData 请求都走这里，就不会有哪个页面漏掉这一步。
+ */
+export async function postForm<T>(url: string, form: FormData): Promise<T> {
+  const { data } = await http.post<T>(url, form, {
+    headers: { 'Content-Type': null },
+  })
+  return data
+}
+
 /** 把未知异常统一成可展示的文案。 */
 export function errorMessage(err: unknown, fallback = '操作失败'): string {
   if (err instanceof ApiError) return err.message

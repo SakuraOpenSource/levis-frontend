@@ -38,3 +38,22 @@ export function isZeroTime(value?: string | null) {
   if (!value) return true
   return value.startsWith('0001-01-01')
 }
+
+/** 文件大小按 1024 进制取整展示，用于附件列表与上限提示。 */
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KiB', 'MiB', 'GiB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  // 小于 10 时保留一位小数，免得 1.4 与 1.9 都显示成「1 MiB」。
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+/** 上传上限，与后端 service 里的常量一致。 */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+export const MAX_ATTACHMENTS = 5
+export const MAX_PHOTO_BYTES = 8 * 1024 * 1024

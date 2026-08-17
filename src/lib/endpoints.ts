@@ -1,6 +1,9 @@
-import { http } from './api'
+import { http, postForm } from './api'
 import type {
   AdminStats,
+  APIKeyCreated,
+  APIKeyInput,
+  APIKeyList,
   Bootstrap,
   CaptchaChallenge,
   CaptchaSettings,
@@ -11,6 +14,7 @@ import type {
   DatabaseConfig,
   InstallRequest,
   Invoice,
+  KYCStatus,
   Order,
   Page,
   PayResult,
@@ -19,9 +23,13 @@ import type {
   RenewResult,
   Service,
   ServiceStatus,
+  Ticket,
+  TicketReply,
+  TicketStatus,
   Transaction,
   UpdateUserInput,
   User,
+  Verification,
   WalletOverview,
   BillingCycle,
 } from './types'
@@ -29,6 +37,25 @@ import type {
 interface PageQuery {
   page?: number
   page_size?: number
+}
+
+/** 证件照的两面，与后端 service.SideFront / SideBack 一致。 */
+export type PhotoSide = 'front' | 'back'
+
+/**
+ * 把工单的主题、正文与附件装进 FormData。
+ *
+ * 附件字段名固定为 files —— 后端按这个名字取多文件。
+ */
+function ticketForm(fields: Record<string, string>, files: File[]): FormData {
+  const form = new FormData()
+  for (const [name, value] of Object.entries(fields)) {
+    form.append(name, value)
+  }
+  for (const file of files) {
+    form.append('files', file)
+  }
+  return form
 }
 
 /** 站点与安装。 */
@@ -204,6 +231,70 @@ export const invoiceApi = {
   },
 }
 
+/** 工单。建单与回复都是 multipart，因此走 postForm。 */
+export const ticketApi = {
+  async list(query: PageQuery = {}) {
+    const { data } = await http.get<Page<Ticket>>('/tickets', { params: query })
+    return data
+  },
+  async get(id: number) {
+    const { data } = await http.get<Ticket>(`/tickets/${id}`)
+    return data
+  },
+  async create(subject: string, body: string, files: File[] = []) {
+    return postForm<Ticket>('/tickets', ticketForm({ subject, body }, files))
+  },
+  async reply(id: number, body: string, files: File[] = []) {
+    return postForm<TicketReply>(`/tickets/${id}/replies`, ticketForm({ body }, files))
+  },
+  async close(id: number) {
+    await http.post(`/tickets/${id}/close`)
+  },
+  /**
+   * 附件下载地址。同源请求，cookie 自动带上，直接放进 <a href download> 即可，
+   * 不必绕 blob URL。
+   */
+  attachmentUrl(ticketId: number, attachmentId: number) {
+    return `/api/tickets/${ticketId}/attachments/${attachmentId}`
+  },
+}
+
+/** 实名认证。 */
+export const kycApi = {
+  /** 从未提交过时后端返回 record: null，前端据此显示提交表单。 */
+  async mine() {
+    const { data } = await http.get<{ record: Verification | null }>('/kyc')
+    return data.record
+  },
+  async submit(realName: string, idNumber: string, front: File, back: File) {
+    const form = new FormData()
+    form.append('real_name', realName)
+    form.append('id_number', idNumber)
+    form.append('front', front)
+    form.append('back', back)
+    return postForm<Verification>('/kyc', form)
+  },
+  /** 证件照地址，可直接作为 <img src>。 */
+  photoUrl(side: PhotoSide) {
+    return `/api/kyc/photo/${side}`
+  },
+}
+
+/** API Key。管理这些 Key 走的是浏览器登录态，不是 Key 自己。 */
+export const apiKeyApi = {
+  async list() {
+    const { data } = await http.get<APIKeyList>('/api-keys')
+    return data
+  },
+  async create(payload: APIKeyInput) {
+    const { data } = await http.post<APIKeyCreated>('/api-keys', payload)
+    return data
+  },
+  async revoke(id: number) {
+    await http.delete(`/api-keys/${id}`)
+  },
+}
+
 /** 管理后台。 */
 export const adminApi = {
   async stats() {
@@ -274,6 +365,46 @@ export const adminApi = {
   },
   async updateCaptchaSettings(payload: CaptchaSettings) {
     const { data } = await http.put<CaptchaSettings>('/admin/settings/captcha', payload)
+    return data
+  },
+  async tickets(query: PageQuery & { status?: TicketStatus } = {}) {
+    const { data } = await http.get<Page<Ticket>>('/admin/tickets', { params: query })
+    return data
+  },
+  async ticket(id: number) {
+    const { data } = await http.get<Ticket>(`/admin/tickets/${id}`)
+    return data
+  },
+  async replyTicket(id: number, body: string, files: File[] = []) {
+    return postForm<TicketReply>(`/admin/tickets/${id}/replies`, ticketForm({ body }, files))
+  },
+  async closeTicket(id: number) {
+    await http.post(`/admin/tickets/${id}/close`)
+  },
+  async reopenTicket(id: number) {
+    await http.post(`/admin/tickets/${id}/reopen`)
+  },
+  ticketAttachmentUrl(ticketId: number, attachmentId: number) {
+    return `/api/admin/tickets/${ticketId}/attachments/${attachmentId}`
+  },
+  async verifications(query: PageQuery & { status?: KYCStatus } = {}) {
+    const { data } = await http.get<Page<Verification>>('/admin/verifications', { params: query })
+    return data
+  },
+  /** 详情里的 id_number 是完整号码，管理员要拿它与照片比对。 */
+  async verification(id: number) {
+    const { data } = await http.get<Verification>(`/admin/verifications/${id}`)
+    return data
+  },
+  verificationPhotoUrl(id: number, side: PhotoSide) {
+    return `/api/admin/verifications/${id}/photo/${side}`
+  },
+  async approveVerification(id: number) {
+    const { data } = await http.post<Verification>(`/admin/verifications/${id}/approve`)
+    return data
+  },
+  async rejectVerification(id: number, reason: string) {
+    const { data } = await http.post<Verification>(`/admin/verifications/${id}/reject`, { reason })
     return data
   },
 }

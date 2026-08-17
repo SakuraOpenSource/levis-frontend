@@ -5,10 +5,14 @@ import { useRoute } from 'vue-router'
 import {
   FileText,
   Home,
+  IdCard,
+  KeyRound,
   Menu,
+  MessageSquarePlus,
   Package,
-  ShieldCheck,
   Store,
+  Ticket,
+  UserCog,
   Wallet,
 } from 'lucide-vue-next'
 
@@ -45,10 +49,41 @@ const items = computed<NavItem[]>(() => [
     ],
   },
   {
+    key: 'support',
+    label: t('sidebar.support'),
+    group: true,
+    children: [
+      {
+        key: 'ticket-new',
+        label: t('sidebar.ticketNew'),
+        icon: MessageSquarePlus,
+        to: { name: 'ticket-new' },
+      },
+      { key: 'tickets', label: t('sidebar.tickets'), icon: Ticket, to: { name: 'tickets' }, exact: true },
+    ],
+  },
+  {
     key: 'security',
     label: t('sidebar.security'),
-    icon: ShieldCheck,
-    to: { name: 'security' },
+    group: true,
+    children: [
+      // exact 必需：/dashboard/security 是另两个子路由的前缀，
+      // 默认的前缀匹配会让「账号设置」在三个页面上一直亮着。
+      {
+        key: 'account',
+        label: t('sidebar.account'),
+        icon: UserCog,
+        to: { name: 'security' },
+        exact: true,
+      },
+      {
+        key: 'verification',
+        label: t('sidebar.verification'),
+        icon: IdCard,
+        to: { name: 'verification' },
+      },
+      { key: 'api-keys', label: t('sidebar.apiKeys'), icon: KeyRound, to: { name: 'api-keys' } },
+    ],
   },
 ])
 

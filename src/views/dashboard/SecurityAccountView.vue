@@ -74,7 +74,7 @@ async function submitPassword() {
 
 <template>
   <div class="space-y-6">
-    <PageHeader :title="t('security.title')" :description="t('security.subtitle')" />
+    <PageHeader :title="t('sidebar.account')" :description="t('security.subtitle')" />
 
     <Card>
       <CardHeader>

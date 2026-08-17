@@ -32,6 +32,20 @@ export type ProductStatus = 'active' | 'hidden'
 export type TransactionType = 'recharge' | 'payment' | 'refund' | 'adjust'
 export type DatabaseDriver = 'sqlite' | 'mysql' | 'postgres'
 
+/** 工单状态。answered 表示客服已回复、等用户；open 表示等客服处理。 */
+export type TicketStatus = 'open' | 'answered' | 'closed'
+
+export const TICKET_STATUSES: TicketStatus[] = ['open', 'answered', 'closed']
+
+export type KYCStatus = 'pending' | 'approved' | 'rejected'
+
+export const KYC_STATUSES: KYCStatus[] = ['pending', 'approved', 'rejected']
+
+export type APIKeyStatus = 'active' | 'revoked'
+
+/** API Key 权限位，与后端 model.AllScopes() 一致。 */
+export type APIScope = 'balance:read' | 'order:write' | 'service:write'
+
 export interface Timestamps {
   id: number
   created_at: string
@@ -164,6 +178,90 @@ export interface PayResult {
 export interface RenewResult {
   service: Service
   invoice: Invoice
+}
+
+/**
+ * 工单附件的元数据。文件本体走 /tickets/:id/attachments/:aid 下载，
+ * 落盘路径是实现细节，后端不下发。
+ */
+export interface TicketAttachment extends Timestamps {
+  reply_id: number
+  ticket_id: number
+  file_name: string
+  /** 由服务端嗅探内容得出，不是客户端声明的类型。 */
+  mime_type: string
+  size_bytes: number
+}
+
+/**
+ * 工单里的一条回复。is_staff 与 author_name 是成文时的快照：
+ * 作者日后被删号或降权，历史对话仍显示当时的身份。
+ */
+export interface TicketReply extends Timestamps {
+  ticket_id: number
+  user_id: number
+  is_staff: boolean
+  author_name: string
+  body: string
+  attachments?: TicketAttachment[] | null
+}
+
+export interface Ticket extends Timestamps {
+  ticket_no: string
+  user_id: number
+  subject: string
+  status: TicketStatus
+  last_reply_at: string | null
+  replies?: TicketReply[] | null
+  /** 仅管理端列表返回。 */
+  username?: string
+}
+
+/**
+ * 实名认证记录。id_number 在用户侧接口里是打码的（前 6 后 4），
+ * 完整号码只出现在管理员审核详情。
+ */
+export interface Verification extends Timestamps {
+  user_id: number
+  real_name: string
+  id_number: string
+  status: KYCStatus
+  reject_reason: string
+  reviewed_by: number
+  reviewed_at: string | null
+  submitted_at: string
+  /** 仅管理端列表返回。 */
+  username?: string
+}
+
+export interface APIKey extends Timestamps {
+  user_id: number
+  name: string
+  /** 明文的前若干位，用于在列表里辨认是哪一把。 */
+  prefix: string
+  scopes: APIScope[] | null
+  status: APIKeyStatus
+  expires_at: string | null
+  last_used_at: string | null
+}
+
+/** Key 列表连同可选权限位一起返回，前端不必再硬编码一份清单。 */
+export interface APIKeyList {
+  items: APIKey[] | null
+  scopes: APIScope[]
+}
+
+/** 创建结果。secret 是明文，且是它在系统里唯一一次露面。 */
+export interface APIKeyCreated {
+  key: APIKey
+  secret: string
+}
+
+export interface APIKeyInput {
+  name: string
+  scopes: APIScope[]
+  /** 0 表示永不过期。 */
+  expires_in_days: number
 }
 
 export interface AdminStats {

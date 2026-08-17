@@ -94,9 +94,35 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboard/InvoiceDetailView.vue'),
       },
       {
+        path: 'tickets',
+        name: 'tickets',
+        component: () => import('@/views/dashboard/TicketsView.vue'),
+      },
+      {
+        path: 'tickets/new',
+        name: 'ticket-new',
+        component: () => import('@/views/dashboard/TicketNewView.vue'),
+      },
+      {
+        path: 'tickets/:id',
+        name: 'ticket-detail',
+        component: () => import('@/views/dashboard/TicketDetailView.vue'),
+      },
+      // security 这个 name 留给「账号设置」，UserMenu 与布局里的既有链接不必改。
+      {
         path: 'security',
         name: 'security',
-        component: () => import('@/views/dashboard/SecurityView.vue'),
+        component: () => import('@/views/dashboard/SecurityAccountView.vue'),
+      },
+      {
+        path: 'security/verification',
+        name: 'verification',
+        component: () => import('@/views/dashboard/SecurityVerificationView.vue'),
+      },
+      {
+        path: 'security/api',
+        name: 'api-keys',
+        component: () => import('@/views/dashboard/SecurityApiKeysView.vue'),
       },
     ],
   },
@@ -121,6 +147,21 @@ const routes: RouteRecordRaw[] = [
         path: 'products',
         name: 'admin-products',
         component: () => import('@/views/admin/ProductsView.vue'),
+      },
+      {
+        path: 'tickets',
+        name: 'admin-tickets',
+        component: () => import('@/views/admin/TicketsView.vue'),
+      },
+      {
+        path: 'tickets/:id',
+        name: 'admin-ticket-detail',
+        component: () => import('@/views/admin/TicketDetailView.vue'),
+      },
+      {
+        path: 'verifications',
+        name: 'admin-verifications',
+        component: () => import('@/views/admin/VerificationsView.vue'),
       },
       {
         path: 'settings',
