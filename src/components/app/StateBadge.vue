@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import { Badge, type BadgeVariants } from '@/components/ui/badge'
 
-type Kind = 'order' | 'service' | 'invoice' | 'product' | 'user' | 'ticket' | 'kyc' | 'apiKey'
+type Kind = 'order' | 'service' | 'invoice' | 'product' | 'user' | 'ticket' | 'kyc' | 'apiKey' | 'plugin'
 
 const props = defineProps<{ kind: Kind; value: string }>()
 
@@ -26,6 +26,13 @@ const VARIANTS: Record<Kind, Record<string, BadgeVariants['variant']>> = {
   ticket: { open: 'warning', answered: 'success', closed: 'secondary' },
   kyc: { pending: 'warning', approved: 'success', rejected: 'destructive' },
   apiKey: { active: 'success', revoked: 'secondary' },
+  plugin: {
+    stopped: 'secondary',
+    running: 'success',
+    error: 'warning',
+    crashed: 'destructive',
+    skipped: 'secondary',
+  },
 }
 
 const LABEL_PREFIX: Record<Kind, string> = {
@@ -37,6 +44,7 @@ const LABEL_PREFIX: Record<Kind, string> = {
   ticket: 'ticketStatus',
   kyc: 'kycStatus',
   apiKey: 'apiKeyStatus',
+  plugin: 'pluginStatus',
 }
 
 const variant = computed<BadgeVariants['variant']>(

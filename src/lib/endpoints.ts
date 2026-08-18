@@ -32,8 +32,10 @@ import type {
   Verification,
   WalletOverview,
   BillingCycle,
+  Plugin,
+  PluginConfigInput,
+  PluginListResponse,
 } from './types'
-
 interface PageQuery {
   page?: number
   page_size?: number
@@ -406,5 +408,38 @@ export const adminApi = {
   async rejectVerification(id: number, reason: string) {
     const { data } = await http.post<Verification>(`/admin/verifications/${id}/reject`, { reason })
     return data
+  },
+  async plugins() {
+    const { data } = await http.get<PluginListResponse>('/admin/plugins')
+    return data
+  },
+  async plugin(id: string) {
+    const { data } = await http.get<Plugin>(`/admin/plugins/${id}`)
+    return data
+  },
+  async installPlugin(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return postForm<{ id: string }>('/admin/plugins/install', form)
+  },
+  async reloadPlugins() {
+    const { data } = await http.post<PluginListResponse>('/admin/plugins/reload')
+    return data
+  },
+  async updatePluginConfig(id: string, payload: PluginConfigInput) {
+    const { data } = await http.put<Plugin>(`/admin/plugins/${id}/config`, payload)
+    return data
+  },
+  async enablePlugin(id: string) {
+    const { data } = await http.post<Plugin>(`/admin/plugins/${id}/enable`)
+    return data
+  },
+  async disablePlugin(id: string) {
+    const { data } = await http.post<Plugin>(`/admin/plugins/${id}/disable`)
+    return data
+  },
+  async pluginLogs(id: string) {
+    const { data } = await http.get<{ lines: string[] }>(`/admin/plugins/${id}/logs`)
+    return data.lines
   },
 }

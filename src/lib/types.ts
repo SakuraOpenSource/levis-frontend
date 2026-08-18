@@ -272,6 +272,55 @@ export interface AdminStats {
   revenue_cents: number
 }
 
+export type PluginState = 'stopped' | 'running' | 'error' | 'crashed' | 'skipped'
+export type PluginFieldType = 'text' | 'number' | 'bool' | 'select' | 'textarea'
+export type PluginScope = 'wallet:credit' | 'user:read' | 'order:read'
+
+export interface PluginConfigOption {
+  value: string
+  label: string
+}
+
+export interface PluginConfigField {
+  key: string
+  label: string
+  type: PluginFieldType
+  required: boolean
+  secret: boolean
+  hint?: string
+  options?: PluginConfigOption[]
+  value: string
+  has_value: boolean
+}
+
+export interface Plugin {
+  id: string
+  state: PluginState
+  last_error?: string
+  name?: string
+  version?: string
+  description?: string
+  author?: string
+  capabilities: string[]
+  required_scopes: string[]
+  granted_scopes: string[]
+  enabled: boolean
+  has_frontend: boolean
+  frontend_url?: string
+  config: PluginConfigField[]
+  configured: boolean
+}
+
+export interface PluginListResponse {
+  items: Plugin[]
+  scopes: PluginScope[]
+}
+
+export interface PluginConfigInput {
+  values: Record<string, string>
+  scopes?: PluginScope[]
+}
+
 /** 验证码字符集：数字+字母 / 纯数字 / 纯字母。 */
 export type CaptchaCharset = 'mixed' | 'digit' | 'letter'
 

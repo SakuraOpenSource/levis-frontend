@@ -8,6 +8,7 @@ import {
   IdCard,
   Menu,
   Package,
+  Puzzle,
   Settings,
   Store,
   Ticket,
@@ -44,6 +45,7 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-verifications' },
   },
   { key: 'settings', label: t('adminNav.settings'), icon: Settings, to: { name: 'admin-settings' } },
+  { key: 'plugins', label: t('adminNav.plugins'), icon: Puzzle, to: { name: 'admin-plugins' } },
 ])
 
 watch(() => route.fullPath, () => (mobileOpen.value = false))
