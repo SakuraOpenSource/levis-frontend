@@ -78,6 +78,8 @@ export interface Product extends Timestamps {
   stock: number
   status: ProductStatus
   sort: number
+  upstream_plugin_id: string
+  upstream_product_id: string
 }
 
 export interface Category extends Timestamps {
@@ -437,6 +439,8 @@ export interface ProductInput {
   stock: number
   status: ProductStatus
   sort: number
+  upstream_plugin_id: string
+  upstream_product_id: string
 }
 
 export interface CreateUserInput {

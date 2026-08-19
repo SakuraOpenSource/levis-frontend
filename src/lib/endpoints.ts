@@ -380,6 +380,14 @@ export const adminApi = {
   async deleteProduct(id: number) {
     await http.delete(`/admin/products/${id}`)
   },
+  async provisionPlugins() {
+    const { data } = await http.get<{ items: { id: string; name: string }[] }>('/admin/provision-plugins')
+    return data.items ?? []
+  },
+  async syncProducts(pluginId: string) {
+    const { data } = await http.post<{ created: number; total: number }>('/admin/products/sync', { plugin_id: pluginId })
+    return data
+  },
   async userServices(userId: number, query: PageQuery = {}) {
     const { data } = await http.get<Page<Service>>(`/admin/users/${userId}/services`, {
       params: query,

@@ -52,10 +52,12 @@ const { cycleLabel } = useCycleLabel()
 
 const items = ref<Product[]>([])
 const categories = ref<Category[]>([])
+const provisionPlugins = ref<{ id: string; name: string }[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(true)
+const syncing = ref(false)
 const error = ref<string | null>(null)
 
 /** '0' 为「全部分组」的哨兵值，SelectItem 不接受空字符串。 */
@@ -77,6 +79,8 @@ const form = reactive({
   stock: '-1',
   status: 'active' as ProductStatus,
   sort: '0',
+  upstreamPluginId: '',
+  upstreamProductId: '',
 })
 
 /** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
@@ -157,6 +161,8 @@ function openCreate() {
     stock: '-1',
     status: 'active' as ProductStatus,
     sort: '0',
+    upstreamPluginId: '',
+    upstreamProductId: '',
   })
   specs.value = []
   dialogOpen.value = true
@@ -174,6 +180,8 @@ function openEdit(item: Product) {
     stock: String(item.stock),
     status: item.status,
     sort: String(item.sort),
+    upstreamPluginId: item.upstream_plugin_id || '',
+    upstreamProductId: item.upstream_product_id || '',
   })
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
@@ -209,6 +217,8 @@ async function save() {
       stock: Number(form.stock),
       status: form.status,
       sort: Number(form.sort) || 0,
+      upstream_plugin_id: form.upstreamPluginId,
+      upstream_product_id: form.upstreamProductId,
     }
     if (editing.value) {
       await adminApi.updateProduct(editing.value.id, payload)
@@ -240,10 +250,29 @@ async function remove(item: Product) {
   }
 }
 
+async function syncFromUpstream(pluginId: string) {
+  if (!pluginId) return
+  syncing.value = true
+  try {
+    const result = await adminApi.syncProducts(pluginId)
+    toast.success(`同步完成：共 ${result.total} 个产品，新增 ${result.created} 个`)
+    await load()
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    syncing.value = false
+  }
+}
+
 onMounted(async () => {
   try {
-    const [cats] = await Promise.all([adminApi.categories(), loadProducts()])
+    const [cats, plugs] = await Promise.all([
+      adminApi.categories(),
+      adminApi.provisionPlugins().catch(() => [] as { id: string; name: string }[]),
+      loadProducts(),
+    ])
     categories.value = cats
+    provisionPlugins.value = plugs
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -256,6 +285,19 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="t('admin.productsTitle')" :description="t('admin.productsSubtitle')">
       <template #actions>
+        <template v-if="provisionPlugins.length">
+          <Button
+            v-for="plug in provisionPlugins"
+            :key="plug.id"
+            variant="outline"
+            size="sm"
+            :disabled="syncing"
+            @click="syncFromUpstream(plug.id)"
+          >
+            <Loader2 v-if="syncing" class="animate-spin" />
+            同步 {{ plug.name }}
+          </Button>
+        </template>
         <Button size="sm" :disabled="!hasCategory" @click="openCreate">
           <Plus />
           {{ t('admin.newProduct') }}
@@ -302,11 +344,12 @@ onMounted(async () => {
                 <TableHead>{{ t('admin.productCycle') }}</TableHead>
                 <TableHead class="text-right">{{ t('admin.productStock') }}</TableHead>
                 <TableHead>{{ t('admin.productStatus') }}</TableHead>
+                <TableHead>{{ t('admin.productUpstream') }}</TableHead>
                 <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!items.length" :colspan="7">{{ t('common.empty') }}</TableEmpty>
+              <TableEmpty v-if="!items.length" :colspan="8">{{ t('common.empty') }}</TableEmpty>
               <TableRow v-for="item in items" v-else :key="item.id">
                 <TableCell class="font-medium">{{ item.name }}</TableCell>
                 <TableCell class="text-muted-foreground text-xs">
@@ -318,6 +361,9 @@ onMounted(async () => {
                   {{ item.stock < 0 ? t('common.unlimited') : item.stock }}
                 </TableCell>
                 <TableCell><StateBadge kind="product" :value="item.status" /></TableCell>
+                <TableCell class="text-muted-foreground text-xs">
+                  {{ item.upstream_plugin_id || t('admin.productUpstreamNone') }}
+                </TableCell>
                 <TableCell class="text-right">
                   <div class="flex justify-end gap-1">
                     <Button
@@ -364,6 +410,21 @@ onMounted(async () => {
           <div class="space-y-2">
             <Label for="p-name">{{ t('admin.productName') }}</Label>
             <Input id="p-name" v-model="form.name" required />
+          </div>
+
+          <div v-if="provisionPlugins.length" class="space-y-2">
+            <Label for="p-upstream">{{ t('admin.productUpstream') }}</Label>
+            <Select v-model="form.upstreamPluginId">
+              <SelectTrigger id="p-upstream">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{{ t('admin.productUpstreamNone') }}</SelectItem>
+                <SelectItem v-for="plug in provisionPlugins" :key="plug.id" :value="plug.id">
+                  {{ plug.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div class="space-y-2">

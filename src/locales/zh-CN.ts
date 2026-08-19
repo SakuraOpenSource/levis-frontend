@@ -460,6 +460,8 @@ export default {
     addSpec: '添加配置项',
     removeSpec: '删除该配置',
     productSort: '排序',
+    productUpstream: '上游对接',
+    productUpstreamNone: '无（本地商品）',
     deleteProductConfirm: '确定删除商品「{name}」？',
     filterByCategory: '按分组筛选',
     noCategoryYet: '请先创建至少一个分组',
