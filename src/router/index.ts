@@ -173,6 +173,11 @@ const routes: RouteRecordRaw[] = [
         name: 'admin-plugins',
         component: () => import('@/views/admin/PluginsView.vue'),
       },
+      {
+        path: 'plugins/:id/manage',
+        name: 'admin-plugin-frontend',
+        component: () => import('@/views/admin/PluginFrontendView.vue'),
+      },
     ],
   },
   {

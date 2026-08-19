@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import {
@@ -19,6 +19,8 @@ import SidebarNav, { type NavItem } from '@/components/app/SidebarNav.vue'
 import UserMenu from '@/components/app/UserMenu.vue'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { adminApi } from '@/lib/endpoints'
+import type { Plugin } from '@/lib/types'
 import { useSiteStore } from '@/stores/site'
 
 const { t } = useI18n()
@@ -26,6 +28,18 @@ const route = useRoute()
 const site = useSiteStore()
 
 const mobileOpen = ref(false)
+const plugins = ref<Plugin[]>([])
+
+async function loadPlugins() {
+  try {
+    const data = await adminApi.plugins()
+    plugins.value = data.items ?? []
+  } catch {
+    plugins.value = []
+  }
+}
+
+onMounted(loadPlugins)
 
 const items = computed<NavItem[]>(() => [
   { key: 'overview', label: t('adminNav.overview'), icon: Gauge, to: { name: 'admin' }, exact: true },
@@ -45,7 +59,26 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-verifications' },
   },
   { key: 'settings', label: t('adminNav.settings'), icon: Settings, to: { name: 'admin-settings' } },
-  { key: 'plugins', label: t('adminNav.plugins'), icon: Puzzle, to: { name: 'admin-plugins' } },
+  {
+    key: 'plugins',
+    label: t('adminNav.plugins'),
+    icon: Puzzle,
+    group: true,
+    children: [
+      {
+        key: 'plugin-management',
+        label: t('adminNav.plugins'),
+        icon: Puzzle,
+        to: { name: 'admin-plugins' },
+      },
+      ...plugins.value.map((plugin) => ({
+        key: `plugin-${plugin.id}`,
+        label: plugin.name || plugin.id,
+        icon: Puzzle,
+        to: { name: 'admin-plugin-frontend', params: { id: plugin.id } },
+      })),
+    ],
+  },
 ])
 
 watch(() => route.fullPath, () => (mobileOpen.value = false))

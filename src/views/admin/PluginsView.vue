@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 import { Loader2, Puzzle, RefreshCw, Upload } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
@@ -9,7 +10,7 @@ import StateBadge from '@/components/app/StateBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -29,12 +30,9 @@ const formError = ref<string | null>(null)
 const file = ref<File | null>(null)
 const selected = ref<Plugin | null>(null)
 const logs = ref<string[]>([])
-const frontendOpen = ref(false)
 const logOpen = ref(false)
 const values = reactive<Record<string, string>>({})
 const granted = ref<PluginScope[]>([])
-
-const frontendURL = computed(() => selected.value?.frontend_url ?? '')
 
 function selectPlugin(item: Plugin) {
   selected.value = item
@@ -195,7 +193,11 @@ onMounted(load)
               </Button>
               <Button size="sm" variant="outline" @click="selectPlugin(item)">{{ t('admin.pluginConfigure') }}</Button>
               <Button size="sm" variant="ghost" @click="showLogs(item)">{{ t('admin.pluginLogs') }}</Button>
-              <Button v-if="item.has_frontend" size="sm" variant="outline" @click="selectPlugin(item); frontendOpen = true">{{ t('admin.pluginFrontend') }}</Button>
+              <Button v-if="item.has_frontend" size="sm" variant="outline" as-child>
+                <RouterLink :to="{ name: 'admin-plugin-frontend', params: { id: item.id } }">
+                  {{ t('admin.pluginFrontend') }}
+                </RouterLink>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -231,16 +233,6 @@ onMounted(load)
         </CardContent>
       </Card>
     </div>
-
-    <Dialog v-model:open="frontendOpen">
-      <DialogContent class="h-[calc(100dvh-2rem)] max-w-6xl p-2 sm:p-3">
-        <DialogHeader class="px-3 pt-3">
-          <DialogTitle>{{ selected?.name || selected?.id }}</DialogTitle>
-          <DialogDescription>{{ t('admin.pluginFrontend') }}</DialogDescription>
-        </DialogHeader>
-        <iframe v-if="frontendURL" :src="frontendURL" class="min-h-0 flex-1 rounded border" :title="selected?.name || selected?.id" />
-      </DialogContent>
-    </Dialog>
 
     <Dialog v-model:open="logOpen">
       <DialogContent>
