@@ -221,6 +221,7 @@ onMounted(load)
                 <p v-if="field.hint" class="text-muted-foreground text-xs">{{ field.hint }}</p>
               </div>
             </div>
+            <p v-else-if="!selected.config_schema_ready" class="text-muted-foreground text-sm">{{ t('admin.pluginConfigUnavailable') }}</p>
             <p v-else class="text-muted-foreground text-sm">{{ t('admin.pluginNoConfig') }}</p>
             <div v-if="scopes.length" class="space-y-3">
               <Label>{{ t('admin.pluginGrantedScopes') }}</Label>

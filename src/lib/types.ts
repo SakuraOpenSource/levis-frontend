@@ -175,6 +175,32 @@ export interface PayResult {
   services: Service[]
 }
 
+export type ExternalPaymentPurpose = 'recharge' | 'order' | 'invoice' | 'renewal'
+export type ExternalPaymentStatus = 'pending' | 'paid' | 'failed'
+
+export interface PaymentMethod {
+  id: string
+  name: string
+}
+
+export interface ExternalPayment extends Timestamps {
+  plugin_id: string
+  external_id: string
+  user_id: number
+  purpose: ExternalPaymentPurpose
+  target_id: number
+  amount_cents: number
+  currency: string
+  subject: string
+  return_url: string
+  pay_url: string
+  gateway_ref: string
+  paid_amount_cents: number
+  status: ExternalPaymentStatus
+  failure_reason: string
+  paid_at: string | null
+}
+
 export interface RenewResult {
   service: Service
   invoice: Invoice
@@ -309,6 +335,7 @@ export interface Plugin {
   frontend_url?: string
   config: PluginConfigField[]
   configured: boolean
+  config_schema_ready: boolean
 }
 
 export interface PluginListResponse {

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { CheckCircle2, Info, Loader2, Wallet } from 'lucide-vue-next'
+import { CheckCircle2, ExternalLink, Info, Loader2, RefreshCcw } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -16,8 +16,8 @@ import { Separator } from '@/components/ui/separator'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { orderApi, walletApi } from '@/lib/endpoints'
-import type { Order, PayResult } from '@/lib/types'
+import { orderApi, paymentApi, walletApi } from '@/lib/endpoints'
+import type { ExternalPayment, Order, PaymentMethod } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -33,7 +33,10 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const paying = ref(false)
 const cancelling = ref(false)
-const result = ref<PayResult | null>(null)
+const methods = ref<PaymentMethod[]>([])
+const selectedMethod = ref('')
+const payment = ref<ExternalPayment | null>(null)
+const querying = ref(false)
 
 const orderId = computed(() => Number(route.params.id))
 const insufficient = computed(
@@ -42,30 +45,52 @@ const insufficient = computed(
 const payable = computed(() => order.value?.status === 'pending')
 
 async function loadAll() {
-  const [fetched, wallet] = await Promise.all([
+  const [fetched, wallet, availableMethods] = await Promise.all([
     orderApi.get(orderId.value),
     walletApi.overview(),
+    paymentApi.methods(),
   ])
   order.value = fetched
   balanceCents.value = wallet.balance_cents
+  methods.value = availableMethods
+  selectedMethod.value = availableMethods[0]?.id ?? ''
+}
+
+function openPayment() {
+  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
 }
 
 async function pay() {
   if (!order.value) return
+  if (!selectedMethod.value) {
+    toast.error(t('payment.methodRequired'))
+    return
+  }
   paying.value = true
   error.value = null
   try {
-    result.value = await orderApi.pay(order.value.id)
-    order.value = result.value.order
-    // 支付扣了余额，同步顶栏显示的数字。
-    await auth.refresh()
-    const wallet = await walletApi.overview()
-    balanceCents.value = wallet.balance_cents
-    toast.success(t('checkout.success'))
+    payment.value = await paymentApi.create('order', order.value.id, selectedMethod.value)
+    openPayment()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
     paying.value = false
+  }
+}
+
+async function queryPayment() {
+  if (!payment.value) return
+  querying.value = true
+  try {
+    payment.value = await paymentApi.query(payment.value.id)
+    if (payment.value.status === 'paid') {
+      await Promise.all([auth.refresh(), loadAll()])
+      toast.success(t('payment.paid'))
+    }
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    querying.value = false
   }
 }
 
@@ -108,7 +133,7 @@ onMounted(async () => {
 
     <template v-else-if="order">
       <!-- 支付成功 -->
-      <Card v-if="result">
+      <Card v-if="payment?.status === 'paid'">
         <CardContent class="flex flex-col items-center gap-4 py-10 text-center">
           <CheckCircle2 class="text-success size-12" />
           <div class="space-y-1">
@@ -120,7 +145,7 @@ onMounted(async () => {
               <RouterLink :to="{ name: 'services' }">{{ t('checkout.viewServices') }}</RouterLink>
             </Button>
             <Button variant="outline" as-child>
-              <RouterLink :to="{ name: 'invoice-detail', params: { id: result.invoice.id } }">
+              <RouterLink :to="{ name: 'invoices' }">
                 {{ t('checkout.viewInvoice') }}
               </RouterLink>
             </Button>
@@ -129,9 +154,9 @@ onMounted(async () => {
       </Card>
 
       <template v-else>
-        <Alert>
+        <Alert v-if="!methods.length" variant="warning">
           <Info />
-          <AlertDescription>{{ t('checkout.fakeNotice') }}</AlertDescription>
+          <AlertDescription>{{ t('payment.unavailable') }}</AlertDescription>
         </Alert>
 
         <Card>
@@ -175,15 +200,16 @@ onMounted(async () => {
             <CardTitle class="text-base">{{ t('checkout.payMethod') }}</CardTitle>
           </CardHeader>
           <CardContent class="space-y-4">
+            <div class="space-y-2">
+              <label for="checkout-payment-method" class="text-sm font-medium">{{ t('payment.method') }}</label>
+              <select id="checkout-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || paying">
+                <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
+                <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
+              </select>
+            </div>
             <div class="flex items-center justify-between rounded-lg border p-3">
-              <span class="flex items-center gap-2 text-sm font-medium">
-                <Wallet class="size-4" />
-                {{ t('checkout.balance') }}
-              </span>
-              <span class="text-sm">
-                {{ t('checkout.balanceAvailable') }}
-                <Money :cents="balanceCents" class="ml-1 font-medium" />
-              </span>
+              <span class="text-sm font-medium">{{ t('checkout.balanceAvailable') }}</span>
+              <Money :cents="balanceCents" class="font-medium" />
             </div>
 
             <Alert v-if="insufficient && payable" variant="warning">
@@ -196,6 +222,24 @@ onMounted(async () => {
               </AlertDescription>
             </Alert>
 
+            <div v-if="payment" class="space-y-3 rounded-lg border p-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <span>{{ t('payment.status') }}</span>
+                <span :class="payment.status === 'failed' ? 'text-destructive' : 'font-medium'">{{ t(`payment.${payment.status}`) }}</span>
+              </div>
+              <p v-if="payment.status === 'failed'" class="text-destructive text-xs">{{ payment.failure_reason || t('payment.failed') }}</p>
+              <div v-if="payment.status === 'pending'" class="flex flex-wrap gap-2">
+                <Button v-if="payment.pay_url" variant="outline" size="sm" @click="openPayment">
+                  <ExternalLink />
+                  {{ t('payment.open') }}
+                </Button>
+                <Button variant="outline" size="sm" :disabled="querying" @click="queryPayment">
+                  <RefreshCcw :class="querying ? 'animate-spin' : ''" />
+                  {{ querying ? t('payment.querying') : t('payment.query') }}
+                </Button>
+              </div>
+            </div>
+
             <div class="flex flex-wrap justify-end gap-3">
               <Button
                 v-if="payable"
@@ -206,7 +250,7 @@ onMounted(async () => {
                 <Loader2 v-if="cancelling" class="animate-spin" />
                 {{ t('checkout.cancelOrder') }}
               </Button>
-              <Button :disabled="!payable || insufficient || paying" @click="pay">
+              <Button :disabled="!payable || !methods.length || paying" @click="pay">
                 <Loader2 v-if="paying" class="animate-spin" />
                 {{ paying ? t('checkout.paying') : t('checkout.pay') }}
               </Button>

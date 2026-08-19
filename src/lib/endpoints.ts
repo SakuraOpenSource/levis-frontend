@@ -35,6 +35,8 @@ import type {
   Plugin,
   PluginConfigInput,
   PluginListResponse,
+  ExternalPayment,
+  PaymentMethod,
 } from './types'
 interface PageQuery {
   page?: number
@@ -160,6 +162,36 @@ export const cartApi = {
   },
   async remove(itemId: number) {
     const { data } = await http.delete<CartView>(`/cart/items/${itemId}`)
+    return data
+  },
+}
+
+/** 外部支付。金额与目标由后端根据 purpose 校验并派生。 */
+export const paymentApi = {
+  async methods() {
+    const { data } = await http.get<{ items: PaymentMethod[] }>('/payments/methods')
+    return data.items ?? []
+  },
+  async create(
+    purpose: ExternalPayment['purpose'],
+    targetId: number,
+    pluginId: string,
+    amountCents?: number,
+  ) {
+    const { data } = await http.post<ExternalPayment>('/payments', {
+      purpose,
+      target_id: targetId,
+      plugin_id: pluginId,
+      ...(amountCents === undefined ? {} : { amount_cents: amountCents }),
+    })
+    return data
+  },
+  async get(id: number) {
+    const { data } = await http.get<ExternalPayment>(`/payments/${id}`)
+    return data
+  },
+  async query(id: number) {
+    const { data } = await http.post<ExternalPayment>(`/payments/${id}/query`)
     return data
   },
 }
@@ -429,6 +461,13 @@ export const adminApi = {
   async updatePluginConfig(id: string, payload: PluginConfigInput) {
     const { data } = await http.put<Plugin>(`/admin/plugins/${id}/config`, payload)
     return data
+  },
+  async frontendPluginConfig(id: string) {
+    const { data } = await http.get<{ pid: string; gateway_url: string; payment_type: string; key_set: boolean }>(`/admin/plugins/${id}/frontend-config`)
+    return data
+  },
+  async updateFrontendPluginConfig(id: string, values: Record<string, string>) {
+    await http.put(`/admin/plugins/${id}/frontend-config`, { values })
   },
   async enablePlugin(id: string) {
     const { data } = await http.post<Plugin>(`/admin/plugins/${id}/enable`)

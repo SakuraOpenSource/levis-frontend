@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Info, Loader2, Wallet as WalletIcon } from 'lucide-vue-next'
+import { Info, Loader2, Wallet as WalletIcon, ExternalLink, RefreshCcw } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -24,9 +24,9 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { walletApi } from '@/lib/endpoints'
+import { paymentApi, walletApi } from '@/lib/endpoints'
 import { formatDateTime } from '@/lib/utils'
-import type { Transaction, WalletOverview } from '@/lib/types'
+import type { ExternalPayment, PaymentMethod, Transaction, WalletOverview } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -42,7 +42,11 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 const amountYuan = ref('100')
+const methods = ref<PaymentMethod[]>([])
+const selectedMethod = ref('')
+const payment = ref<ExternalPayment | null>(null)
 const recharging = ref(false)
+const querying = ref(false)
 
 const TX_LABELS: Record<Transaction['type'], string> = {
   recharge: 'wallet.typeRecharge',
@@ -78,13 +82,15 @@ async function recharge() {
     toast.error(t('error.required'))
     return
   }
+  if (!selectedMethod.value) {
+    toast.error(t('payment.methodRequired'))
+    return
+  }
   recharging.value = true
+  error.value = null
   try {
-    await walletApi.recharge(amountCents.value)
-    // 余额、流水、顶栏三处都要刷新，否则显示会不一致。
-    const [wallet] = await Promise.all([walletApi.overview(), loadTransactions(1), auth.refresh()])
-    overview.value = wallet
-    toast.success(t('wallet.recharged'))
+    payment.value = await paymentApi.create('recharge', 0, selectedMethod.value, amountCents.value)
+    if (payment.value.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -92,10 +98,37 @@ async function recharge() {
   }
 }
 
+function openPayment() {
+  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
+}
+
+async function queryPayment() {
+  if (!payment.value) return
+  querying.value = true
+  try {
+    payment.value = await paymentApi.query(payment.value.id)
+    if (payment.value.status === 'paid') {
+      const [wallet] = await Promise.all([walletApi.overview(), loadTransactions(1), auth.refresh()])
+      overview.value = wallet
+      toast.success(t('payment.paid'))
+    }
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    querying.value = false
+  }
+}
+
 onMounted(async () => {
   try {
-    const [wallet] = await Promise.all([walletApi.overview(), loadTransactions()])
+    const [wallet, availableMethods] = await Promise.all([
+      walletApi.overview(),
+      paymentApi.methods(),
+    ])
+    await loadTransactions()
     overview.value = wallet
+    methods.value = availableMethods
+    selectedMethod.value = availableMethods[0]?.id ?? ''
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -139,18 +172,42 @@ onMounted(async () => {
           <CardContent class="space-y-3">
             <Alert>
               <Info />
-              <AlertDescription>{{ t('wallet.rechargeHint') }}</AlertDescription>
+              <AlertDescription>{{ t('payment.externalHint') }}</AlertDescription>
             </Alert>
+            <div class="space-y-2">
+              <Label for="wallet-payment-method">{{ t('payment.method') }}</Label>
+              <select id="wallet-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || recharging">
+                <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
+                <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
+              </select>
+            </div>
             <form class="flex items-end gap-3" @submit.prevent="recharge">
               <div class="flex-1 space-y-2">
                 <Label for="amount">{{ t('wallet.rechargeAmount') }}</Label>
                 <Input id="amount" v-model="amountYuan" type="number" min="0.01" step="0.01" />
               </div>
-              <Button type="submit" :disabled="recharging">
+              <Button type="submit" :disabled="recharging || !methods.length">
                 <Loader2 v-if="recharging" class="animate-spin" />
-                {{ recharging ? t('wallet.recharging') : t('wallet.recharge') }}
+                {{ recharging ? t('payment.creating') : t('wallet.recharge') }}
               </Button>
             </form>
+            <div v-if="payment" class="space-y-3 rounded-lg border p-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <span>{{ t('payment.status') }}</span>
+                <span :class="payment.status === 'failed' ? 'text-destructive' : 'font-medium'">{{ t(`payment.${payment.status}`) }}</span>
+              </div>
+              <p v-if="payment.status === 'failed'" class="text-destructive text-xs">{{ payment.failure_reason || t('payment.failed') }}</p>
+              <div v-if="payment.status === 'pending'" class="flex flex-wrap gap-2">
+                <Button v-if="payment.pay_url" variant="outline" size="sm" @click="openPayment">
+                  <ExternalLink />
+                  {{ t('payment.open') }}
+                </Button>
+                <Button variant="outline" size="sm" :disabled="querying" @click="queryPayment">
+                  <RefreshCcw :class="querying ? 'animate-spin' : ''" />
+                  {{ querying ? t('payment.querying') : t('payment.query') }}
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
