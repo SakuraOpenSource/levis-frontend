@@ -46,6 +46,8 @@ const canRenew = computed(
   () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
 )
 
+const isFree = computed(() => item.value?.price_cents === 0)
+
 const balanceRenewing = ref(false)
 
 async function load() {
@@ -229,7 +231,7 @@ onMounted(async () => {
           <RefreshCcw v-else />
           余额续费
         </Button>
-        <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length" @click="renew">
+        <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length || isFree" :title="isFree ? '免费服务请使用余额续费' : ''" @click="renew">
           <Loader2 v-if="renewing" class="animate-spin" />
           <RefreshCcw v-else />
           {{ t('services.renew') }}
@@ -247,11 +249,14 @@ onMounted(async () => {
     <LoadingBlock v-if="loading" :rows="3" />
 
     <div v-if="item && canRenew" class="space-y-3 rounded-lg border p-4">
-      <label for="renew-payment-method" class="text-sm font-medium">{{ t('payment.method') }}</label>
-      <select id="renew-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || renewing">
-        <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
-        <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
-      </select>
+      <div v-if="isFree" class="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">免费服务请使用“余额续费”</div>
+      <template v-else>
+        <label for="renew-payment-method" class="text-sm font-medium">{{ t('payment.method') }}</label>
+        <select id="renew-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || renewing">
+          <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
+          <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
+        </select>
+      </template>
       <div v-if="payment" class="space-y-3 rounded-lg border p-3 text-sm">
         <div class="flex items-center justify-between gap-3">
           <span>{{ t('payment.status') }}</span>
