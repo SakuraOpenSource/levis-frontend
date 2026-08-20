@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ExternalLink, Loader2, RefreshCcw } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -11,12 +11,22 @@ import PageHeader from '@/components/app/PageHeader.vue'
 import StateBadge from '@/components/app/StateBadge.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { serviceApi, paymentApi } from '@/lib/endpoints'
 import { formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
-import type { ExternalPayment, PaymentMethod, Service } from '@/lib/types'
+import type { ExternalPayment, OSImage, PaymentMethod, PowerAction, Service, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -32,7 +42,6 @@ const selectedMethod = ref('')
 const payment = ref<ExternalPayment | null>(null)
 const querying = ref(false)
 
-/** 只有使用中且非一次性付费的服务才有「续费」一说。 */
 const canRenew = computed(
   () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
 )
@@ -92,7 +101,105 @@ async function queryPayment() {
   }
 }
 
-onMounted(load)
+const canPower = computed(
+  () => !!item.value?.upstream_plugin_id && !!item.value?.upstream_host_id,
+)
+
+const upstream = ref<UpstreamHost | null>(null)
+const upstreamLoading = ref(false)
+
+async function loadUpstream() {
+  if (!item.value || !canPower.value) return
+  upstreamLoading.value = true
+  try {
+    upstream.value = await serviceApi.upstream(item.value.id)
+  } catch {
+    upstream.value = null
+  } finally {
+    upstreamLoading.value = false
+  }
+}
+
+const poweringAction = ref<PowerAction | null>(null)
+
+const powerActions: { action: PowerAction; labelKey: string; icon: 'power' | 'powerOff' | 'reboot' | 'reinstall'; danger?: boolean }[] = [
+  { action: 'boot', labelKey: 'services.powerBoot', icon: 'power' },
+  { action: 'shutdown', labelKey: 'services.powerShutdown', icon: 'powerOff', danger: true },
+  { action: 'reboot', labelKey: 'services.powerReboot', icon: 'reboot' },
+  { action: 'reinstall', labelKey: 'services.powerReinstall', icon: 'reinstall', danger: true },
+]
+
+const availablePowerActions = computed(() => {
+  if (!canPower.value) return []
+  if (upstreamLoading.value) return []
+  if (!upstream.value) return powerActions // 尚未获取到能力时全部显示，获取后过滤
+  const acts = upstream.value.actions ?? []
+  // 空数组表示上游未明确能力，仍显示全部以兼容旧插件
+  if (!acts.length) return powerActions
+  return powerActions.filter((pa) => acts.includes(pa.action))
+})
+
+// 重装系统：系统列表
+const reinstallOpen = ref(false)
+const osList = ref<OSImage[]>([])
+const osLoading = ref(false)
+const selectedOs = ref('')
+
+async function openReinstall() {
+  if (!item.value) return
+  reinstallOpen.value = true
+  selectedOs.value = ''
+  if (osList.value.length) return
+  osLoading.value = true
+  try {
+    osList.value = await serviceApi.osList(item.value.id)
+  } catch {
+    osList.value = []
+  } finally {
+    osLoading.value = false
+  }
+}
+
+async function power(action: PowerAction) {
+  if (!item.value || poweringAction.value) return
+  if (action === 'reinstall') {
+    await openReinstall()
+    return
+  }
+  poweringAction.value = action
+  try {
+    await serviceApi.power(item.value.id, action)
+    toast.success(t('services.powerSubmitted'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    poweringAction.value = null
+  }
+}
+
+async function confirmReinstall() {
+  if (!item.value) return
+  if (osList.value.length && !selectedOs.value) {
+    toast.error(t('services.selectOSHint'))
+    return
+  }
+  if (!window.confirm(t('services.powerReinstallConfirm'))) return
+  reinstallOpen.value = false
+  poweringAction.value = 'reinstall'
+  try {
+    await serviceApi.power(item.value.id, 'reinstall', selectedOs.value || undefined)
+    toast.success(t('services.powerSubmitted'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    poweringAction.value = null
+  }
+}
+
+onMounted(async () => {
+  await load()
+  await loadUpstream()
+})
 </script>
 
 <template>
@@ -140,6 +247,73 @@ onMounted(load)
         </div>
       </div>
     </div>
+
+    <Card v-if="item && canPower">
+      <CardContent class="space-y-3">
+        <h2 class="text-sm font-medium">{{ t('services.powerTitle') }}</h2>
+        <p class="text-muted-foreground text-xs">{{ t('services.powerHint') }}</p>
+        <div v-if="upstreamLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="animate-spin size-4" />
+          {{ t('services.loadingOS') }}
+        </div>
+        <div v-else-if="!availablePowerActions.length" class="text-muted-foreground text-sm">
+          {{ t('services.powerUnsupported') }}
+        </div>
+        <div v-else class="flex flex-wrap gap-2">
+          <Button
+            v-for="pa in availablePowerActions"
+            :key="pa.action"
+            :variant="pa.danger ? 'destructive' : 'outline'"
+            size="sm"
+            :disabled="poweringAction !== null"
+            @click="power(pa.action)"
+          >
+            <Loader2 v-if="poweringAction === pa.action" class="animate-spin" />
+            <Power v-else-if="pa.icon === 'power'" />
+            <PowerOff v-else-if="pa.icon === 'powerOff'" />
+            <RotateCcw v-else-if="pa.icon === 'reboot'" />
+            <HardDriveDownload v-else />
+            {{ t(pa.labelKey) }}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Dialog v-model:open="reinstallOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ t('services.powerReinstall') }}</DialogTitle>
+          <DialogDescription>{{ t('services.selectOSHint') }}</DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div v-if="osLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 class="animate-spin size-4" />
+            {{ t('services.loadingOS') }}
+          </div>
+          <div v-else-if="osList.length" class="space-y-2">
+            <Label>{{ t('services.selectOS') }}</Label>
+            <Select :model-value="selectedOs" @update:model-value="(v: any) => (selectedOs = String(v))">
+              <SelectTrigger>
+                <SelectValue :placeholder="t('services.selectOS')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="os in osList" :key="os.id" :value="os.id">
+                  <span v-if="os.group" class="text-muted-foreground mr-1">[{{ os.group }}]</span>{{ os.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p v-else class="text-muted-foreground text-sm">{{ t('services.noOSList') }}</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="reinstallOpen = false">{{ t('common.cancel') }}</Button>
+          <Button :disabled="poweringAction !== null" @click="confirmReinstall">
+            <Loader2 v-if="poweringAction === 'reinstall'" class="animate-spin" />
+            {{ t('common.confirm') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Card v-if="item">
       <CardContent>

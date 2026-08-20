@@ -133,7 +133,12 @@ export interface Service extends Timestamps {
   price_cents: number
   next_due_at: string | null
   expires_at: string | null
+  upstream_plugin_id: string
+  upstream_host_id: string
 }
+
+/** 电源操作动作：开机/关机/重启/重装系统。 */
+export type PowerAction = 'boot' | 'shutdown' | 'reboot' | 'reinstall'
 
 export interface InvoiceItem extends Timestamps {
   invoice_id: number
@@ -183,6 +188,37 @@ export type ExternalPaymentStatus = 'pending' | 'paid' | 'failed'
 export interface PaymentMethod {
   id: string
   name: string
+}
+
+export interface PaymentMethodAdmin extends Timestamps {
+  name: string
+  plugin_id: string
+  config: Record<string, string>
+  enabled: boolean
+  sort_order: number
+}
+
+export interface PaymentPlugin {
+  id: string
+  name: string
+  config: PluginConfigField[]
+}
+
+export interface OSImage {
+  id: string
+  name: string
+  group: string
+}
+
+export interface UpstreamHost {
+  id: string
+  product_id: string
+  product_name: string
+  status: string
+  billing_cycle: string
+  expiry: string
+  upstream_order_id: string
+  actions: string[]
 }
 
 export interface ExternalPayment extends Timestamps {
@@ -319,6 +355,7 @@ export interface PluginConfigField {
   options?: PluginConfigOption[]
   value: string
   has_value: boolean
+  default_value?: string
 }
 
 export interface Plugin {

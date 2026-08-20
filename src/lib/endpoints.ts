@@ -18,6 +18,7 @@ import type {
   Order,
   Page,
   PayResult,
+  PowerAction,
   Product,
   ProductInput,
   RenewResult,
@@ -37,6 +38,10 @@ import type {
   PluginListResponse,
   ExternalPayment,
   PaymentMethod,
+  PaymentMethodAdmin,
+  PaymentPlugin,
+  OSImage,
+  UpstreamHost,
 } from './types'
 interface PageQuery {
   page?: number
@@ -233,6 +238,18 @@ export const serviceApi = {
     const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
     return data
   },
+  async power(id: number, action: PowerAction, os?: string) {
+    const { data } = await http.post<{ message: string }>(`/services/${id}/power`, { action, ...(os ? { os } : {}) })
+    return data
+  },
+  async upstream(id: number) {
+    const { data } = await http.get<UpstreamHost>(`/services/${id}/upstream`)
+    return data
+  },
+  async osList(id: number) {
+    const { data } = await http.get<{ items: OSImage[] }>(`/services/${id}/os`)
+    return data.items ?? []
+  },
 }
 
 /** 钱包。 */
@@ -413,6 +430,33 @@ export const adminApi = {
   },
   async deleteService(id: number) {
     await http.delete(`/admin/services/${id}`)
+  },
+  async createServiceForUser(userId: number, payload: { product_id: number; quantity?: number; billing_cycle?: string; provision: boolean }) {
+    const { data } = await http.post<Service>(`/admin/users/${userId}/services`, payload)
+    return data
+  },
+  async bindService(id: number, payload: { upstream_plugin_id: string; upstream_host_id: string }) {
+    const { data } = await http.post<Service>(`/admin/services/${id}/bind`, payload)
+    return data
+  },
+  async paymentPlugins() {
+    const { data } = await http.get<{ items: PaymentPlugin[] }>('/admin/payment-plugins')
+    return data.items ?? []
+  },
+  async paymentMethods() {
+    const { data } = await http.get<{ items: PaymentMethodAdmin[] }>('/admin/payment-methods')
+    return data.items ?? []
+  },
+  async createPaymentMethod(payload: { name: string; plugin_id: string; config: Record<string, string>; enabled?: boolean; sort_order?: number }) {
+    const { data } = await http.post<PaymentMethodAdmin>('/admin/payment-methods', payload)
+    return data
+  },
+  async updatePaymentMethod(id: number, payload: { name?: string; plugin_id?: string; config?: Record<string, string>; enabled?: boolean; sort_order?: number }) {
+    const { data } = await http.patch<PaymentMethodAdmin>(`/admin/payment-methods/${id}`, payload)
+    return data
+  },
+  async deletePaymentMethod(id: number) {
+    await http.delete(`/admin/payment-methods/${id}`)
   },
   async captchaSettings() {
     const { data } = await http.get<CaptchaSettings>('/admin/settings/captcha')

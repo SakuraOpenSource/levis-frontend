@@ -13,6 +13,7 @@ import {
   Store,
   Ticket,
   Users,
+  Wallet,
 } from 'lucide-vue-next'
 
 import SidebarNav, { type NavItem } from '@/components/app/SidebarNav.vue'
@@ -51,6 +52,7 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-categories' },
   },
   { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
+  { key: 'finance', label: t('adminNav.finance'), icon: Wallet, to: { name: 'admin-finance' } },
   { key: 'tickets', label: t('adminNav.tickets'), icon: Ticket, to: { name: 'admin-tickets' } },
   {
     key: 'verifications',

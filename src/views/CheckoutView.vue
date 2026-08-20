@@ -108,6 +108,23 @@ async function cancel() {
   }
 }
 
+/** 用余额直接支付订单，无需外部支付渠道。 */
+const payingBalance = ref(false)
+async function payWithBalance() {
+  if (!order.value) return
+  payingBalance.value = true
+  error.value = null
+  try {
+    await orderApi.pay(order.value.id)
+    await Promise.all([auth.refresh(), loadAll()])
+    toast.success(t('checkout.success'))
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    payingBalance.value = false
+  }
+}
+
 onMounted(async () => {
   if (!Number.isFinite(orderId.value) || orderId.value <= 0) {
     // 没有订单号时无从结账，退回购物车。
@@ -132,8 +149,8 @@ onMounted(async () => {
     <LoadingBlock v-if="loading" :rows="3" />
 
     <template v-else-if="order">
-      <!-- 支付成功 -->
-      <Card v-if="payment?.status === 'paid'">
+      <!-- 支付成功：外部支付回调成功，或余额支付后订单已变为已付 -->
+      <Card v-if="payment?.status === 'paid' || order.status === 'paid'">
         <CardContent class="flex flex-col items-center gap-4 py-10 text-center">
           <CheckCircle2 class="text-success size-12" />
           <div class="space-y-1">
@@ -244,13 +261,22 @@ onMounted(async () => {
               <Button
                 v-if="payable"
                 variant="ghost"
-                :disabled="cancelling || paying"
+                :disabled="cancelling || paying || payingBalance"
                 @click="cancel"
               >
                 <Loader2 v-if="cancelling" class="animate-spin" />
                 {{ t('checkout.cancelOrder') }}
               </Button>
-              <Button :disabled="!payable || !methods.length || paying" @click="pay">
+              <Button
+                v-if="payable"
+                variant="outline"
+                :disabled="insufficient || paying || payingBalance"
+                @click="payWithBalance"
+              >
+                <Loader2 v-if="payingBalance" class="animate-spin" />
+                {{ t('checkout.balance') }}
+              </Button>
+              <Button :disabled="!payable || !methods.length || paying || payingBalance" @click="pay">
                 <Loader2 v-if="paying" class="animate-spin" />
                 {{ paying ? t('checkout.paying') : t('checkout.pay') }}
               </Button>
