@@ -384,8 +384,21 @@ export const adminApi = {
     const { data } = await http.get<{ items: { id: string; name: string }[] }>('/admin/provision-plugins')
     return data.items ?? []
   },
-  async syncProducts(pluginId: string) {
-    const { data } = await http.post<{ created: number; total: number }>('/admin/products/sync', { plugin_id: pluginId })
+  async upstreamProducts(pluginId: string) {
+    const { data } = await http.get<{
+      items: {
+        id: string
+        name: string
+        description: string
+        group_name: string
+        price_cents: number
+        billing_cycle: string
+      }[]
+    }>('/admin/upstream-products', { params: { plugin_id: pluginId } })
+    return data.items ?? []
+  },
+  async syncProductInfo(productId: number) {
+    const { data } = await http.post<{ message: string }>(`/admin/products/${productId}/sync-info`)
     return data
   },
   async userServices(userId: number, query: PageQuery = {}) {

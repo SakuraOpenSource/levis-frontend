@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Loader2, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
+import { Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -57,8 +57,20 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(true)
-const syncing = ref(false)
 const error = ref<string | null>(null)
+
+/** 上游产品列表：选择上游插件后加载，供挑选要关联的上游商品。 */
+interface UpstreamProduct {
+  id: string
+  name: string
+  description: string
+  group_name: string
+  price_cents: number
+  billing_cycle: string
+}
+const upstreamProducts = ref<UpstreamProduct[]>([])
+const upstreamLoading = ref(false)
+const syncingInfo = ref<number | null>(null)
 
 /** '0' 为「全部分组」的哨兵值，SelectItem 不接受空字符串。 */
 const ALL = '0'
@@ -250,17 +262,40 @@ async function remove(item: Product) {
   }
 }
 
-async function syncFromUpstream(pluginId: string) {
+/** 选择上游插件后加载其商品列表，供挑选要关联的上游商品。 */
+async function loadUpstreamProducts(pluginId: string) {
+  form.upstreamProductId = ''
+  upstreamProducts.value = []
   if (!pluginId) return
-  syncing.value = true
+  upstreamLoading.value = true
   try {
-    const result = await adminApi.syncProducts(pluginId)
-    toast.success(`同步完成：共 ${result.total} 个产品，新增 ${result.created} 个`)
+    upstreamProducts.value = await adminApi.upstreamProducts(pluginId)
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    upstreamLoading.value = false
+  }
+}
+
+/** 选中某个上游商品时，自动带出其名称与简介，方便直接保存。 */
+function pickUpstreamProduct(productId: string) {
+  const found = upstreamProducts.value.find((item) => item.id === productId)
+  if (!found) return
+  form.name = found.name
+  form.description = found.description
+}
+
+/** 从上游拉取价格、计费周期与简介并更新本地商品。 */
+async function syncInfo(item: Product) {
+  syncingInfo.value = item.id
+  try {
+    const result = await adminApi.syncProductInfo(item.id)
+    toast.success(result.message || '同步完成')
     await load()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
-    syncing.value = false
+    syncingInfo.value = null
   }
 }
 
@@ -285,19 +320,6 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="t('admin.productsTitle')" :description="t('admin.productsSubtitle')">
       <template #actions>
-        <template v-if="provisionPlugins.length">
-          <Button
-            v-for="plug in provisionPlugins"
-            :key="plug.id"
-            variant="outline"
-            size="sm"
-            :disabled="syncing"
-            @click="syncFromUpstream(plug.id)"
-          >
-            <Loader2 v-if="syncing" class="animate-spin" />
-            同步 {{ plug.name }}
-          </Button>
-        </template>
         <Button size="sm" :disabled="!hasCategory" @click="openCreate">
           <Plus />
           {{ t('admin.newProduct') }}
@@ -367,6 +389,19 @@ onMounted(async () => {
                 <TableCell class="text-right">
                   <div class="flex justify-end gap-1">
                     <Button
+                      v-if="item.upstream_plugin_id"
+                      variant="ghost"
+                      size="icon"
+                      class="size-8"
+                      :disabled="syncingInfo === item.id"
+                      :aria-label="t('admin.syncProductInfo')"
+                      :title="t('admin.syncProductInfo')"
+                      @click="syncInfo(item)"
+                    >
+                      <Loader2 v-if="syncingInfo === item.id" class="animate-spin" />
+                      <RefreshCw v-else />
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="icon"
                       class="size-8"
@@ -414,7 +449,7 @@ onMounted(async () => {
 
           <div v-if="provisionPlugins.length" class="space-y-2">
             <Label for="p-upstream">{{ t('admin.productUpstream') }}</Label>
-            <Select v-model="form.upstreamPluginId">
+            <Select v-model="form.upstreamPluginId" @update:model-value="(v) => loadUpstreamProducts(String(v ?? ''))">
               <SelectTrigger id="p-upstream">
                 <SelectValue />
               </SelectTrigger>
@@ -425,6 +460,25 @@ onMounted(async () => {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div v-if="form.upstreamPluginId" class="space-y-2">
+            <Label for="p-upstream-product">上游商品</Label>
+            <Select v-model="form.upstreamProductId" @update:model-value="(v) => pickUpstreamProduct(String(v ?? ''))">
+              <SelectTrigger id="p-upstream-product">
+                <SelectValue :placeholder="upstreamLoading ? '加载中…' : '请选择上游商品'" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="up in upstreamProducts"
+                  :key="up.id"
+                  :value="up.id"
+                >
+                  {{ up.group_name ? `${up.group_name} / ` : '' }}{{ up.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-muted-foreground text-xs">选择上游商品后会自动带出名称与简介</p>
           </div>
 
           <div class="space-y-2">

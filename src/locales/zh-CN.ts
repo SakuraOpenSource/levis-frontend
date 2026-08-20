@@ -462,6 +462,7 @@ export default {
     productSort: '排序',
     productUpstream: '上游对接',
     productUpstreamNone: '无（本地商品）',
+    syncProductInfo: '同步价格/周期/简介',
     deleteProductConfirm: '确定删除商品「{name}」？',
     filterByCategory: '按分组筛选',
     noCategoryYet: '请先创建至少一个分组',
