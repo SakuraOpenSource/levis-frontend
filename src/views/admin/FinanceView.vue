@@ -59,6 +59,12 @@ const form = reactive({
 
 const selectedPlugin = computed(() => plugins.value.find((p) => p.id === form.plugin_id))
 const selectedFields = computed(() => selectedPlugin.value?.config ?? [])
+const exampleNotifyUrl = computed(() => {
+  const base = typeof window !== 'undefined' ? window.location.origin : ''
+  if (editing.value) return `${base}/api/plugin/v1/payment-notify/${editing.value.plugin_id}/${editing.value.id}`
+  if (form.plugin_id) return `${base}/api/plugin/v1/payment-notify/${form.plugin_id}/{id}`
+  return `${base}/api/plugin/v1/payment-notify/epay/{id}`
+})
 
 function pluginName(id: string) {
   return plugins.value.find((p) => p.id === id)?.name ?? id
@@ -196,18 +202,24 @@ onMounted(load)
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>{{ t('admin.paymentMethodName') }}</TableHead>
                 <TableHead>{{ t('admin.paymentPlugin') }}</TableHead>
+                <TableHead>回调地址</TableHead>
                 <TableHead>{{ t('admin.paymentMethodSort') }}</TableHead>
                 <TableHead>{{ t('common.status') }}</TableHead>
                 <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!methods.length" :colspan="5">{{ t('admin.noPaymentMethods') }}</TableEmpty>
+              <TableEmpty v-if="!methods.length" :colspan="7">{{ t('admin.noPaymentMethods') }}</TableEmpty>
               <TableRow v-for="item in methods" v-else :key="item.id">
+                <TableCell class="font-mono text-xs">{{ item.id }}</TableCell>
                 <TableCell class="font-medium">{{ item.name }}</TableCell>
                 <TableCell>{{ pluginName(item.plugin_id) }}</TableCell>
+                <TableCell class="max-w-[260px] truncate font-mono text-xs" :title="`/api/plugin/v1/payment-notify/${item.plugin_id}/${item.id}`">
+                  /api/plugin/v1/payment-notify/{{ item.plugin_id }}/{{ item.id }}
+                </TableCell>
                 <TableCell>{{ item.sort_order }}</TableCell>
                 <TableCell>
                   <Badge :variant="item.enabled ? 'default' : 'secondary'">
@@ -257,6 +269,13 @@ onMounted(load)
               </SelectContent>
             </Select>
           </div>
+
+          <div v-if="editing" class="space-y-1">
+            <Label>ID</Label>
+            <Input :model-value="String(editing.id)" disabled />
+            <p class="text-muted-foreground break-all text-xs">回调：{{ exampleNotifyUrl }}</p>
+          </div>
+          <div v-else class="text-muted-foreground text-xs">保存后将生成 ID，回调示例：{{ exampleNotifyUrl }}</div>
 
           <div class="flex items-center gap-2">
             <Switch :model-value="form.enabled" @update:model-value="(v: boolean) => (form.enabled = v)" />
@@ -314,6 +333,7 @@ onMounted(load)
                 :placeholder="field.default_value"
                 @update:model-value="(v: any) => (form.config[field.key] = String(v))"
               />
+              <p v-if="field.key === 'notify_url'" class="text-muted-foreground break-all text-xs">留空自动：{{ exampleNotifyUrl }}</p>
             </div>
           </div>
 
