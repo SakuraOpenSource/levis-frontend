@@ -46,11 +46,13 @@ const canRenew = computed(
   () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
 )
 
+const balanceRenewing = ref(false)
+
 async function load() {
   try {
     const [service, availableMethods] = await Promise.all([
       serviceApi.get(Number(route.params.id)),
-      paymentApi.methods(),
+      paymentApi.methods().catch(() => [] as PaymentMethod[]),
     ])
     item.value = service
     methods.value = availableMethods
@@ -59,6 +61,22 @@ async function load() {
     error.value = errorMessage(err)
   } finally {
     loading.value = false
+  }
+}
+
+async function renewWithBalance() {
+  if (!item.value) return
+  const price = priceLabel(item.value.price_cents, item.value.billing_cycle)
+  if (!window.confirm(t('services.renewConfirm', { price }))) return
+  balanceRenewing.value = true
+  try {
+    await serviceApi.renew(item.value.id)
+    item.value = await serviceApi.get(Number(route.params.id))
+    toast.success(t('services.renewed'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    balanceRenewing.value = false
   }
 }
 
@@ -206,6 +224,11 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="item?.name ?? t('services.detailTit')">
       <template #actions>
+        <Button v-if="canRenew" size="sm" variant="outline" :disabled="balanceRenewing" @click="renewWithBalance">
+          <Loader2 v-if="balanceRenewing" class="animate-spin" />
+          <RefreshCcw v-else />
+          余额续费
+        </Button>
         <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length" @click="renew">
           <Loader2 v-if="renewing" class="animate-spin" />
           <RefreshCcw v-else />
