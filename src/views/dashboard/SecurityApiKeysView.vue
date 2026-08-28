@@ -83,10 +83,10 @@ async function load() {
   error.value = null
   try {
     // 两个请求互不依赖，并发发出。
-    const [list, record] = await Promise.all([apiKeyApi.list(), kycApi.mine()])
+    const [list, mine] = await Promise.all([apiKeyApi.list(), kycApi.mine()])
     items.value = list.items ?? []
     scopes.value = list.scopes
-    approved.value = record?.status === 'approved'
+    approved.value = mine.record?.status === 'approved'
   } catch (err) {
     error.value = errorMessage(err)
   } finally {

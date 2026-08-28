@@ -294,8 +294,58 @@ export interface Verification extends Timestamps {
   reviewed_by: number
   reviewed_at: string | null
   submitted_at: string
+  /** 第三方认证流程才有：处理认证的插件 ID 与认证单号。 */
+  plugin_id?: string
+  certify_id?: string
   /** 仅管理端列表返回。 */
   username?: string
+}
+
+/**
+ * 实名认证插件要求用户提交的字段定义，来自插件 manifest 的 kyc_fields。
+ * 结构与 PluginConfigField 对齐，但没有 value/has_value —— 用户填的值
+ * 不回显。
+ */
+export interface KYCFieldSchema {
+  key: string
+  label: string
+  type: PluginFieldType
+  required: boolean
+  secret: boolean
+  hint?: string
+  options?: PluginConfigOption[]
+}
+
+/** 实名认证模式：人工审核或实名认证插件 ID。 */
+export const KYC_MODE_MANUAL = 'manual'
+
+/** GET /api/kyc 的响应：状态 + 站点当前采用的认证模式。 */
+export interface KYCMine {
+  record: Verification | null
+  mode: string
+  plugin_name: string
+  fields: KYCFieldSchema[]
+}
+
+/** 发起第三方实名认证：values 的键由插件声明的字段决定。 */
+export interface KYCExternalStart {
+  record: Verification
+  certify_id: string
+  certify_url: string
+  certify_html: string
+  message: string
+}
+
+/** 管理端实名详情：完整号码的记录 + 插件认证时用户提交的字段键值。 */
+export interface KYCVerificationDetail {
+  record: Verification
+  input: Record<string, string> | null
+}
+
+/** 查询第三方实名认证结果。passed: T 通过 / F 未通过 / P 处理中。 */
+export interface KYCExternalStatus {
+  record: Verification
+  passed: string
 }
 
 export interface APIKey extends Timestamps {
@@ -402,6 +452,18 @@ export interface CaptchaSettings {
   register_enabled: boolean
   charset: CaptchaCharset
   length: number
+}
+
+/** 实名认证插件的模式下拉选项。 */
+export interface KYCPluginOption {
+  id: string
+  name: string
+}
+
+/** 管理端实名认证模式设置。 */
+export interface KYCSettings {
+  mode: string
+  plugins: KYCPluginOption[]
 }
 
 /**

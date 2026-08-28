@@ -25,7 +25,9 @@ import {
   CAPTCHA_CHARSETS,
   CAPTCHA_MAX_LENGTH,
   CAPTCHA_MIN_LENGTH,
+  KYC_MODE_MANUAL,
   type CaptchaCharset,
+  type KYCPluginOption,
 } from '@/lib/types'
 import { useSiteStore } from '@/stores/site'
 
@@ -46,7 +48,10 @@ const form = reactive({
   charset: 'digit' as CaptchaCharset,
   // Select 的值必须是字符串。
   length: String(CAPTCHA_MIN_LENGTH + 2),
+  // 实名认证模式：manual 或实名认证插件 ID。
+  kycMode: KYC_MODE_MANUAL,
 })
+const kycOptions = ref<KYCPluginOption[]>([])
 
 const lengthOptions = computed(() => {
   const out: string[] = []
@@ -65,11 +70,17 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const cfg = await adminApi.captchaSettings()
+    const [cfg, kyc] = await Promise.all([adminApi.captchaSettings(), adminApi.kycSettings()])
     form.loginEnabled = cfg.login_enabled
     form.registerEnabled = cfg.register_enabled
     form.charset = cfg.charset
     form.length = String(cfg.length)
+    // 配置指向的插件已卸载时，下拉里没有这个值会显示不出来；回落人工审核。
+    form.kycMode =
+      kyc.mode === KYC_MODE_MANUAL || kyc.plugins.some((p) => p.id === kyc.mode)
+        ? kyc.mode
+        : KYC_MODE_MANUAL
+    kycOptions.value = kyc.plugins
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -81,12 +92,15 @@ async function save() {
   formError.value = null
   saving.value = true
   try {
-    await adminApi.updateCaptchaSettings({
-      login_enabled: form.loginEnabled,
-      register_enabled: form.registerEnabled,
-      charset: form.charset,
-      length: Number(form.length),
-    })
+    await Promise.all([
+      adminApi.updateCaptchaSettings({
+        login_enabled: form.loginEnabled,
+        register_enabled: form.registerEnabled,
+        charset: form.charset,
+        length: Number(form.length),
+      }),
+      adminApi.updateKYCSettings(form.kycMode),
+    ])
     // 重新拉一次 bootstrap：登录、注册页靠它决定是否显示验证码，
     // 不刷新的话本次会话里改动看不出效果。
     await site.load(true)
@@ -169,6 +183,33 @@ onMounted(load)
           <p v-if="allDisabled" class="text-muted-foreground text-xs">
             {{ t('admin.captchaAllDisabled') }}
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('admin.kycTitle') }}</CardTitle>
+          <CardDescription>{{ t('admin.kycSubtitle') }}</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="max-w-sm space-y-2">
+            <Label for="kyc-mode">{{ t('admin.kycMode') }}</Label>
+            <Select v-model="form.kycMode">
+              <SelectTrigger id="kyc-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">{{ t('admin.kycModeManual') }}</SelectItem>
+                <SelectItem v-for="option in kycOptions" :key="option.id" :value="option.id">
+                  {{ option.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-muted-foreground text-xs">{{ t('admin.kycModeHint') }}</p>
+            <p v-if="form.kycMode !== 'manual' && !kycOptions.length" class="text-destructive text-xs">
+              {{ t('admin.kycNoPlugins') }}
+            </p>
+          </div>
         </CardContent>
       </Card>
 

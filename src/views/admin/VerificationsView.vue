@@ -51,6 +51,8 @@ const error = ref<string | null>(null)
 const detailOpen = ref(false)
 // 详情里的号码是完整的，只在对话框打开期间存在。
 const detail = ref<Verification | null>(null)
+// 插件认证时用户提交的字段键值；人工上传记录为 null。
+const detailInput = ref<Record<string, string> | null>(null)
 const detailLoading = ref(false)
 const detailError = ref<string | null>(null)
 const acting = ref(false)
@@ -87,7 +89,9 @@ async function openDetail(record: Verification) {
   detailLoading.value = true
   try {
     // 列表里的号码是打码的，审核要完整号码，得单独拉详情。
-    detail.value = await adminApi.verification(record.id)
+    const result = await adminApi.verification(record.id)
+    detail.value = result.record
+    detailInput.value = result.input
   } catch (err) {
     detailError.value = errorMessage(err)
   } finally {
@@ -249,6 +253,16 @@ onMounted(() => load())
           <div v-if="detail.reject_reason" class="text-sm">
             <span class="text-muted-foreground text-xs">{{ t('admin.rejectReason') }}：</span>
             {{ detail.reject_reason }}
+          </div>
+
+          <div v-if="detailInput && Object.keys(detailInput).length" class="text-sm">
+            <p class="mb-1 font-medium">{{ t('admin.kycInput') }}</p>
+            <dl class="bg-muted/30 grid gap-2 rounded-md border p-3 sm:grid-cols-2">
+              <div v-for="(value, key) in detailInput" :key="key">
+                <dt class="text-muted-foreground text-xs">{{ key }}</dt>
+                <dd class="mt-0.5 text-sm break-all tabular">{{ value }}</dd>
+              </div>
+            </dl>
           </div>
 
           <div>

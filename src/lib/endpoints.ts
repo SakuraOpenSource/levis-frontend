@@ -14,6 +14,11 @@ import type {
   DatabaseConfig,
   InstallRequest,
   Invoice,
+  KYCExternalStart,
+  KYCVerificationDetail,
+  KYCExternalStatus,
+  KYCMine,
+  KYCSettings,
   KYCStatus,
   Order,
   Page,
@@ -312,10 +317,13 @@ export const ticketApi = {
 
 /** 实名认证。 */
 export const kycApi = {
-  /** 从未提交过时后端返回 record: null，前端据此显示提交表单。 */
+  /**
+   * 状态与站点认证模式。mode 为 manual 时渲染证件照上传表单；
+   * 为插件 ID 时按 fields 渲染插件声明的动态表单。
+   */
   async mine() {
-    const { data } = await http.get<{ record: Verification | null }>('/kyc')
-    return data.record
+    const { data } = await http.get<KYCMine>('/kyc')
+    return data
   },
   async submit(realName: string, idNumber: string, front: File, back: File) {
     const form = new FormData()
@@ -324,6 +332,16 @@ export const kycApi = {
     form.append('front', front)
     form.append('back', back)
     return postForm<Verification>('/kyc', form)
+  },
+  /** 通过实名认证插件发起第三方认证，values 的键由插件字段声明决定。 */
+  async startExternal(values: Record<string, string>) {
+    const { data } = await http.post<KYCExternalStart>('/kyc/external', { values })
+    return data
+  },
+  /** 查询第三方认证结果。passed: T / F / P。 */
+  async queryExternal() {
+    const { data } = await http.get<KYCExternalStatus>('/kyc/external')
+    return data
   },
   /** 证件照地址，可直接作为 <img src>。 */
   photoUrl(side: PhotoSide) {
@@ -466,6 +484,15 @@ export const adminApi = {
     const { data } = await http.put<CaptchaSettings>('/admin/settings/captcha', payload)
     return data
   },
+  /** 实名认证模式设置：manual 或实名认证插件 ID，选项来自已装插件。 */
+  async kycSettings() {
+    const { data } = await http.get<KYCSettings>('/admin/settings/kyc')
+    return data
+  },
+  async updateKYCSettings(mode: string) {
+    const { data } = await http.put<{ mode: string }>('/admin/settings/kyc', { mode })
+    return data
+  },
   async tickets(query: PageQuery & { status?: TicketStatus } = {}) {
     const { data } = await http.get<Page<Ticket>>('/admin/tickets', { params: query })
     return data
@@ -492,7 +519,7 @@ export const adminApi = {
   },
   /** 详情里的 id_number 是完整号码，管理员要拿它与照片比对。 */
   async verification(id: number) {
-    const { data } = await http.get<Verification>(`/admin/verifications/${id}`)
+    const { data } = await http.get<KYCVerificationDetail>(`/admin/verifications/${id}`)
     return data
   },
   verificationPhotoUrl(id: number, side: PhotoSide) {
