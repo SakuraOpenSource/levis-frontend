@@ -150,6 +150,11 @@ export const catalogApi = {
     const { data } = await http.get<Product>(`/catalog/products/${id}`)
     return data
   },
+  /** 当前用户的代理加盟信息（等级/下一档/生效折扣）。 */
+  async agentProgramSummary() {
+    const { data } = await http.get<{ enabled: boolean; tier: { id: number; name: string; min_balance_cents: number } | null; next_tier: { id: number; name: string; min_balance_cents: number } | null; discounts: Array<{ category_id: number; discount_permille: number }> }>('/agent-program/summary')
+    return data
+  },
 }
 
 /** 购物车。写操作统一返回最新购物车，省一次拉取。 */
@@ -399,6 +404,14 @@ export const adminApi = {
   },
   async deleteCategory(id: number) {
     await http.delete(`/admin/categories/${id}`)
+  },
+  async agentProgram() {
+    const { data } = await http.get<{ enabled: boolean; tiers: Array<{ id: number; name: string; min_balance_cents: number; sort: number; discounts: Array<{ category_id: number; discount_permille: number }> }> }>('/admin/agent-program')
+    return data
+  },
+  async updateAgentProgram(payload: { enabled: boolean; tiers: Array<{ name: string; min_balance_cents: number; sort: number }>; discounts: Array<{ tier_id: number; category_id: number; discount_permille: number }> }) {
+    const { data } = await http.put('/admin/agent-program', payload)
+    return data
   },
   async products(query: PageQuery & { category_id?: number } = {}) {
     const { data } = await http.get<Page<Product>>('/admin/products', { params: query })

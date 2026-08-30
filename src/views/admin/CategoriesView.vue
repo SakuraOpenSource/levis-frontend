@@ -62,30 +62,32 @@ const form = reactive({
   parentId: TOP_LEVEL,
 })
 
-const parents = computed(() => all.value.filter((item) => item.parent_id === null))
-
-/** 后端返回的是平铺列表，这里按 parent_id 组装成两级，仅用于展示。 */
+/** 后端返回的是平铺列表，这里按 parent_id 递归平铺成带缩进层级的行。 */
 const rows = computed(() => {
-  const out: { item: Category; child: boolean }[] = []
-  const byParent = new Map<number, Category[]>()
+  const out: { item: Category; depth: number }[] = []
+  const byParent = new Map<number | null, Category[]>()
   for (const item of all.value) {
-    if (item.parent_id === null) continue
-    const list = byParent.get(item.parent_id) ?? []
+    const key = item.parent_id ?? null
+    const list = byParent.get(key) ?? []
     list.push(item)
-    byParent.set(item.parent_id, list)
+    byParent.set(key, list)
   }
-  for (const parent of parents.value) {
-    out.push({ item: parent, child: false })
-    for (const child of byParent.get(parent.id) ?? []) {
-      out.push({ item: child, child: true })
+  const walk = (parentId: number | null, depth: number) => {
+    for (const item of byParent.get(parentId) ?? []) {
+      out.push({ item, depth })
+      walk(item.id, depth + 1)
     }
   }
+  walk(null, 0)
   return out
 })
 
-/** 编辑时不能把自己选成自己的上级。 */
+/**
+ * 父级候选：全部分组（递归平铺带层级缩进），排除自己——后端还会做
+ * 环检测（不能挂到自己的子孙下面），这里把直接的一层挡掉即可。
+ */
 const parentOptions = computed(() =>
-  parents.value.filter((item) => item.id !== editing.value?.id),
+  rows.value.filter((row) => row.item.id !== editing.value?.id),
 )
 
 async function load() {
@@ -204,9 +206,12 @@ onMounted(load)
           <TableBody>
             <TableEmpty v-if="!rows.length" :colspan="5">{{ t('common.empty') }}</TableEmpty>
             <TableRow v-for="row in rows" v-else :key="row.item.id">
-              <TableCell :class="row.child ? 'pl-8' : 'font-medium'">
-                <span class="flex items-center gap-1.5">
-                  <CornerDownRight v-if="row.child" class="text-muted-foreground size-3.5" />
+              <TableCell :class="row.depth > 0 ? '' : 'font-medium'">
+                <span
+                  class="flex items-center gap-1.5"
+                  :style="{ paddingLeft: `${row.depth * 1.25}rem` }"
+                >
+                  <CornerDownRight v-if="row.depth > 0" class="text-muted-foreground size-3.5" />
                   {{ row.item.name }}
                 </span>
               </TableCell>
@@ -217,12 +222,7 @@ onMounted(load)
               <TableCell class="text-right tabular">{{ row.item.sort }}</TableCell>
               <TableCell class="text-right">
                 <div class="flex justify-end gap-1">
-                  <Button
-                    v-if="!row.child"
-                    variant="ghost"
-                    size="sm"
-                    @click="openCreate(row.item.id)"
-                  >
+                  <Button variant="ghost" size="sm" @click="openCreate(row.item.id)">
                     <Plus />
                     {{ t('admin.subcategories') }}
                   </Button>
@@ -279,8 +279,8 @@ onMounted(load)
               </SelectTrigger>
               <SelectContent>
                 <SelectItem :value="TOP_LEVEL">{{ t('admin.categoryTopLevel') }}</SelectItem>
-                <SelectItem v-for="item in parentOptions" :key="item.id" :value="String(item.id)">
-                  {{ item.name }}
+                <SelectItem v-for="row in parentOptions" :key="row.item.id" :value="String(row.item.id)">
+                  {{ row.depth > 0 ? '　'.repeat(row.depth) + '└ ' : '' }}{{ row.item.name }}
                 </SelectItem>
               </SelectContent>
             </Select>

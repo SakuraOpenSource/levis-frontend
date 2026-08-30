@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { LayoutGrid, List, PackageX, ShoppingCart } from 'lucide-vue-next'
 
+import CategorySection from '@/components/app/CategorySection.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
@@ -17,6 +18,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { usePreferencesStore } from '@/stores/preferences'
 
+interface AgentSummary {
+  enabled: boolean
+  tier: { name: string } | null
+  next_tier: { name: string; min_balance_cents: number } | null
+  discounts: { category_id: number; discount_permille: number }[]
+}
+
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
@@ -25,37 +33,49 @@ const toast = useToast()
 const preferences = usePreferencesStore()
 
 const categories = ref<Category[]>([])
+const agentSummary = ref<AgentSummary | null>(null)
+/** 分组折扣展示行：分组名 → 折扣文案。 */
+const agentDiscountRows = ref<{ name: string; label: string }[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 /** 正在加购的商品 ID，用于按钮的局部 loading。 */
 const adding = ref<number | null>(null)
 
 /**
- * 大类 → 小类 → 商品。挂在大类本身的商品也要展示，
- * 否则管理员把商品直接放在大类下就「不见了」。
+ * 分组树导航节点：分组可以无限嵌套，导航里把任意深度的后代都平铺成
+ * 可选 tab（名称前带父路径），挂在任何一层的商品都要能被看到。
  */
-interface Section {
+interface NavNode {
   category: Category
+  /** 面包屑路径（父分组名 /），根为空。 */
+  path: string
   ownProducts: Product[]
-  children: { category: Category; products: Product[] }[]
+  children: NavNode[]
 }
 
-const sections = computed<Section[]>(() =>
-  categories.value.map((parent) => ({
-    category: parent,
-    ownProducts: parent.products ?? [],
-    children: (parent.children ?? []).map((child) => ({
-      category: child,
-      products: child.products ?? [],
-    })),
-  })),
-)
+function buildNode(category: Category, prefix: string): NavNode {
+  return {
+    category,
+    path: prefix,
+    ownProducts: category.products ?? [],
+    children: (category.children ?? []).map((child) => buildNode(child, `${prefix}${category.name} / `)),
+  }
+}
+
+/** 收集节点自身的全部后代（不含自己），用于渲染子级 tab。 */
+function collectDescendants(node: NavNode): NavNode[] {
+  return node.children.flatMap((child) => [child, ...collectDescendants(child)])
+}
+
+/** 节点及其全部后代的商品合集。 */
+function subtreeProducts(node: NavNode): Product[] {
+  return [...node.ownProducts, ...node.children.flatMap((child) => subtreeProducts(child))]
+}
+
+const sections = computed<NavNode[]>(() => categories.value.map((root) => buildNode(root, '')))
 
 const hasAnyProduct = computed(() =>
-  sections.value.some(
-    (section) =>
-      section.ownProducts.length > 0 || section.children.some((child) => child.products.length > 0),
-  ),
+  sections.value.some((section) => subtreeProducts(section).length > 0),
 )
 
 // ---------- 导航视图 ----------
@@ -69,33 +89,36 @@ const activeSection = computed(
   () => sections.value.find((section) => section.category.id === activeParentId.value) ?? null,
 )
 
-/** 选中大类时展示其全部商品（含小类），选中小类时只看该小类。 */
+/** 当前大类的全部后代（任意深度），作为子级 tab 展示。 */
+const activeDescendants = computed<NavNode[]>(() =>
+  activeSection.value ? collectDescendants(activeSection.value) : [],
+)
+
+/** 选中分组时展示其全部商品（含所有后代分组），选中具体后代时看该子树。 */
 const navProducts = computed<Product[]>(() => {
   const section = activeSection.value
   if (!section) return []
   if (activeChildId.value !== ALL_CHILDREN) {
-    return section.children.find((child) => child.category.id === activeChildId.value)?.products ?? []
+    const node = activeDescendants.value.find((item) => item.category.id === activeChildId.value)
+    return node ? subtreeProducts(node) : []
   }
-  return [...section.ownProducts, ...section.children.flatMap((child) => child.products)]
+  return subtreeProducts(section)
 })
 
-/** 描述条优先显示更具体的那一层：选了小类就显示小类的描述。 */
+/** 描述条优先显示更具体的那一层：选了子分组就显示子分组的描述。 */
 const navDescription = computed(() => {
   const section = activeSection.value
   if (!section) return ''
   if (activeChildId.value !== ALL_CHILDREN) {
-    const child = section.children.find((item) => item.category.id === activeChildId.value)
-    if (child?.category.description) return child.category.description
+    const node = activeDescendants.value.find((item) => item.category.id === activeChildId.value)
+    if (node?.category.description) return node.category.description
   }
   return section.category.description
 })
 
 /** 默认落在第一个有商品的大类上，避免打开就是空页。 */
 function pickDefaultParent() {
-  const preferred = sections.value.find(
-    (section) =>
-      section.ownProducts.length > 0 || section.children.some((child) => child.products.length > 0),
-  )
+  const preferred = sections.value.find((section) => subtreeProducts(section).length > 0)
   activeParentId.value = (preferred ?? sections.value[0])?.category.id ?? 0
   activeChildId.value = ALL_CHILDREN
 }
@@ -133,6 +156,27 @@ onMounted(async () => {
   try {
     categories.value = await catalogApi.categories()
     pickDefaultParent()
+    if (auth.isLoggedIn) {
+      try {
+        const summary = await catalogApi.agentProgramSummary()
+        agentSummary.value = summary
+        if (summary.enabled && summary.tier && summary.discounts.length) {
+          // 折扣挂的分组可能嵌套很深：按目录树递归找名字。
+          const names = new Map<number, string>()
+          const walk = (items: Category[]) => {
+            for (const item of items) {
+              names.set(item.id, item.name)
+              walk(item.children ?? [])
+            }
+          }
+          walk(categories.value)
+          agentDiscountRows.value = summary.discounts.map((d: { category_id: number; discount_permille: number }) => ({
+            name: names.get(d.category_id) ?? `分组 #${d.category_id}`,
+            label: `${(d.discount_permille / 10).toFixed(1)} 折`,
+          }))
+        }
+      } catch {}
+    }
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -183,6 +227,25 @@ onMounted(async () => {
     </PageHeader>
 
     <ErrorAlert :message="error" />
+    <div
+      v-if="agentSummary?.enabled && agentSummary.tier"
+      class="bg-primary/10 border-primary/30 rounded-md border px-4 py-3 text-sm"
+    >
+      <span class="font-medium">{{ agentSummary.tier.name }}</span>
+      <template v-if="agentDiscountRows.length">
+        生效折扣：
+        <span
+          v-for="(row, i) in agentDiscountRows"
+          :key="row.name"
+          class="text-muted-foreground"
+        >{{ i > 0 ? '、' : '' }}{{ row.name }} {{ row.label }}</span>
+        ，下单自动按折后价结算。
+      </template>
+      <template v-else>暂无适用折扣。</template>
+      <span v-if="agentSummary.next_tier" class="text-muted-foreground">
+        （余额再充 ¥{{ (agentSummary.next_tier.min_balance_cents / 100).toFixed(2) }} 升级 {{ agentSummary.next_tier.name }}）
+      </span>
+    </div>
     <LoadingBlock v-if="loading" :rows="4" />
 
     <div
@@ -211,7 +274,7 @@ onMounted(async () => {
         </div>
 
         <div
-          v-if="activeSection?.children.length"
+          v-if="activeDescendants.length"
           class="flex flex-wrap items-center gap-x-3 gap-y-2"
         >
           <span class="text-muted-foreground shrink-0 text-sm">
@@ -226,14 +289,14 @@ onMounted(async () => {
             {{ t('shop.allSubcategories') }}
           </Button>
           <Button
-            v-for="child in activeSection.children"
+            v-for="child in activeDescendants"
             :key="child.category.id"
             :variant="activeChildId === child.category.id ? 'default' : 'outline'"
             size="sm"
             :aria-pressed="activeChildId === child.category.id"
             @click="activeChildId = child.category.id"
           >
-            {{ child.category.name }}
+            {{ child.path }}{{ child.category.name }}
           </Button>
         </div>
 
@@ -260,50 +323,11 @@ onMounted(async () => {
       </div>
     </template>
 
-    <!-- 列表视图：所有分组纵向平铺 -->
+    <!-- 列表视图：分组树递归纵向平铺 -->
     <template v-else>
-      <section v-for="section in sections" :key="section.category.id" class="space-y-4">
-        <div class="space-y-1">
-          <h2 class="text-lg font-semibold">{{ section.category.name }}</h2>
-          <p v-if="section.category.description" class="text-muted-foreground text-sm">
-            {{ section.category.description }}
-          </p>
-        </div>
-
-        <!-- 直接挂在大类下的商品 -->
-        <div v-if="section.ownProducts.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ProductCard
-            v-for="product in section.ownProducts"
-            :key="product.id"
-            :product="product"
-            :pending="adding === product.id"
-            @add="addToCart"
-          />
-        </div>
-
-        <!-- 小类分块 -->
-        <div v-for="child in section.children" :key="child.category.id" class="space-y-3">
-          <div class="flex items-baseline gap-2">
-            <h3 class="text-sm font-medium">{{ child.category.name }}</h3>
-            <p v-if="child.category.description" class="text-muted-foreground text-xs">
-              {{ child.category.description }}
-            </p>
-          </div>
-
-          <p v-if="!child.products.length" class="text-muted-foreground text-sm">
-            {{ t('shop.empty') }}
-          </p>
-          <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <ProductCard
-              v-for="product in child.products"
-              :key="product.id"
-              :product="product"
-              :pending="adding === product.id"
-              @add="addToCart"
-            />
-          </div>
-        </div>
-      </section>
+      <template v-for="section in sections" :key="section.category.id">
+        <CategorySection :node="section" :adding="adding" @add="addToCart" />
+      </template>
     </template>
   </div>
 </template>

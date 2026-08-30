@@ -144,6 +144,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/CategoriesView.vue'),
       },
       {
+        path: 'admin-agent-program',
+        name: 'admin-agent-program',
+        component: () => import('@/views/admin/AgentProgramView.vue'),
+      },
+      {
         path: 'products',
         name: 'admin-products',
         component: () => import('@/views/admin/ProductsView.vue'),
