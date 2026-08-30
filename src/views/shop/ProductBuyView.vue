@@ -208,7 +208,6 @@ onMounted(async () => {
                 type="number"
                 :min="cfg[field.key].min"
                 :max="cfg[field.key].max"
-                :step="field.key === 'memory_mb' ? 128 : 1"
               />
               <p class="text-muted-foreground text-xs">
                 {{ field.hint || `可选 ${cfg[field.key].min} - ${cfg[field.key].max} ${field.unit}` }}

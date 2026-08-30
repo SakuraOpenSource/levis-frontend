@@ -59,12 +59,12 @@ interface ProvisionForm {
 }
 
 /** 弹性配置编辑器的资源行元数据。 */
-const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode'>; label: string; unit: string; min: number; step: number }[] = [
-  { key: 'cpu', label: 'CPU', unit: '核', min: 1, step: 1 },
-  { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, step: 128 },
-  { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, step: 1 },
-  { key: 'bandwidth_mbps', label: '带宽', unit: 'Mbps', min: 0, step: 1 },
-  { key: 'traffic_gb', label: '流量', unit: 'GB', min: 0, step: 1 },
+const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode'>; label: string; unit: string; min: number }[] = [
+  { key: 'cpu', label: 'CPU', unit: '核', min: 1 },
+  { key: 'memory_mb', label: '内存', unit: 'MB', min: 16 },
+  { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1 },
+  { key: 'bandwidth_mbps', label: '带宽', unit: 'Mbps', min: 0 },
+  { key: 'traffic_gb', label: '流量', unit: 'GB', min: 0 },
 ]
 
 function emptyProvision(): ProvisionForm {
@@ -360,10 +360,13 @@ async function syncInfo(item: Product) {
 /** 把编辑态整理成后端开通配置；流量按录入单位换算成 GB。 */
 function buildProvisionConfig() {
   const scale = trafficUnit.value === 'tb' ? 1024 : 1
-  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode'>) => ({
-    min: provision[key].min * (key === 'traffic_gb' ? scale : 1),
-    max: provision[key].max * (key === 'traffic_gb' ? scale : 1),
-  })
+  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode'>) => {
+    const min = provision[key].min * (key === 'traffic_gb' ? scale : 1)
+    // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值，
+    // 避免遗留旧值造成 min > max 的假错误。
+    const max = provision.mode === 'fixed' ? min : provision[key].max * (key === 'traffic_gb' ? scale : 1)
+    return { min, max }
+  }
   return {
     driver: provision.driver,
     mode: provision.mode,
@@ -595,7 +598,6 @@ onMounted(async () => {
                   v-model.number="provision[field.key].min"
                   type="number"
                   :min="field.min"
-                  :step="field.step"
                   class="w-28"
                   :aria-label="`${field.label} 最小值`"
                 />
@@ -605,7 +607,6 @@ onMounted(async () => {
                     v-model.number="provision[field.key].max"
                     type="number"
                     :min="field.min"
-                    :step="field.step"
                     class="w-28"
                     :aria-label="`${field.label} 最大值`"
                   />
