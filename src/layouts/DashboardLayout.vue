@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import {
+  Crown,
   FileText,
   Home,
   IdCard,
@@ -45,6 +46,7 @@ const items = computed<NavItem[]>(() => [
     group: true,
     children: [
       { key: 'wallet', label: t('sidebar.wallet'), icon: Wallet, to: { name: 'wallet' } },
+      { key: 'agent-program', label: '代理加盟', icon: Crown, to: { name: 'agent-program' } },
       { key: 'invoices', label: t('sidebar.invoices'), icon: FileText, to: { name: 'invoices' } },
     ],
   },

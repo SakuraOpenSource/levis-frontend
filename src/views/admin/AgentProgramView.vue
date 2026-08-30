@@ -63,6 +63,52 @@ function permilleLabel(permille: number) {
   return `${(permille / 10).toFixed(1)} 折`
 }
 
+// ===== 申请审核 =====
+interface ApplicationRow {
+  id: number
+  username: string
+  email: string
+  balance_cents: number
+  tier_name: string
+  contact: string
+  remark: string
+  status: string
+  review_remark: string
+  created_at: string
+}
+const applications = ref<ApplicationRow[]>([])
+const reviewing = ref<number | null>(null)
+
+async function loadApplications() {
+  try {
+    applications.value = await adminApi.agentApplications()
+  } catch {}
+}
+
+async function review(row: ApplicationRow, approve: boolean) {
+  const remark = window.prompt(approve ? '通过备注（可留空）' : '拒绝原因（建议填写）', '') ?? ''
+  if (!approve && !remark.trim()) {
+    toast.error('拒绝时请填写原因')
+    return
+  }
+  reviewing.value = row.id
+  try {
+    await adminApi.reviewAgentApplication(row.id, { approve, review_remark: remark.trim() })
+    toast.success(approve ? '已通过，用户等级已绑定' : '已拒绝')
+    await loadApplications()
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    reviewing.value = null
+  }
+}
+
+const statusLabel: Record<string, string> = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝',
+}
+
 async function load() {
   loading.value = true
   error.value = null
@@ -71,6 +117,7 @@ async function load() {
       adminApi.agentProgram(),
       catalogApi.categories(),
     ])
+    loadApplications()
     enabled.value = cfg.enabled
     tiers.value = (cfg.tiers ?? []).map((tier: { name: string; min_balance_cents: number; discounts?: Array<{ category_id: number; discount_permille: number }> }) => ({
       key: keySeq++,
@@ -196,6 +243,45 @@ onMounted(load)
           <p v-if="!tiers.length" class="text-muted-foreground py-6 text-center text-sm">
             还没有代理等级，点击「添加等级」创建第一档（例如：一级代理，预存 1000 元，云服务器 8 折）
           </p>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>代理申请审核</CardTitle>
+          <CardDescription>用户提交的申请；通过后该用户绑定所选等级（余额不足也生效）</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <p v-if="!applications.length" class="text-muted-foreground py-4 text-center text-sm">
+            暂无申请
+          </p>
+          <div
+            v-for="row in applications"
+            :key="row.id"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+          >
+            <div class="min-w-0 space-y-0.5 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="font-medium">{{ row.username }}</span>
+                <span class="text-muted-foreground text-xs">{{ row.email }}</span>
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs"
+                  :class="row.status === 'pending' ? 'bg-amber-500/15 text-amber-600' : row.status === 'approved' ? 'bg-emerald-500/15 text-emerald-600' : 'bg-muted text-muted-foreground'"
+                >
+                  {{ statusLabel[row.status] || row.status }}
+                </span>
+              </div>
+              <p class="text-muted-foreground text-xs">
+                申请等级：{{ row.tier_name }} · 当前余额 ¥{{ (row.balance_cents / 100).toFixed(2) }} · 联系方式：{{ row.contact }}
+              </p>
+              <p v-if="row.remark" class="text-muted-foreground text-xs">留言：{{ row.remark }}</p>
+              <p v-if="row.review_remark" class="text-muted-foreground text-xs">审核备注：{{ row.review_remark }}</p>
+            </div>
+            <div v-if="row.status === 'pending'" class="flex gap-2">
+              <Button size="sm" :disabled="reviewing === row.id" @click="review(row, true)">通过</Button>
+              <Button size="sm" variant="outline" :disabled="reviewing === row.id" @click="review(row, false)">拒绝</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
           <div
             v-for="(tier, index) in tiers"

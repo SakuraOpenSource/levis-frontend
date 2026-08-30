@@ -150,9 +150,19 @@ export const catalogApi = {
     const { data } = await http.get<Product>(`/catalog/products/${id}`)
     return data
   },
+  /** 可申请的代理等级列表。 */
+  async agentProgramTiers() {
+    const { data } = await http.get<{ items: Array<{ id: number; name: string; min_balance_cents: number }> }>('/agent-program/tiers')
+    return data
+  },
+  /** 提交代理申请。 */
+  async applyAgentProgram(payload: { tier_id: number; contact: string; remark?: string }) {
+    const { data } = await http.post('/agent-program/apply', payload)
+    return data
+  },
   /** 当前用户的代理加盟信息（等级/下一档/生效折扣）。 */
   async agentProgramSummary() {
-    const { data } = await http.get<{ enabled: boolean; tier: { id: number; name: string; min_balance_cents: number } | null; next_tier: { id: number; name: string; min_balance_cents: number } | null; discounts: Array<{ category_id: number; discount_permille: number }> }>('/agent-program/summary')
+    const { data } = await http.get<{ enabled: boolean; tier: { id: number; name: string; min_balance_cents: number } | null; next_tier: { id: number; name: string; min_balance_cents: number } | null; bound: boolean; balance_cents: number; application: { id: number; tier_id: number; status: string; review_remark: string; created_at: string } | null; discounts: Array<{ category_id: number; discount_permille: number }> }>('/agent-program/summary')
     return data
   },
 }
@@ -411,6 +421,14 @@ export const adminApi = {
   },
   async updateAgentProgram(payload: { enabled: boolean; tiers: Array<{ name: string; min_balance_cents: number; sort: number }>; discounts: Array<{ tier_id: number; category_id: number; discount_permille: number }> }) {
     const { data } = await http.put('/admin/agent-program', payload)
+    return data
+  },
+  async agentApplications(status?: string) {
+    const { data } = await http.get<{ items: Array<{ id: number; user_id: number; username: string; email: string; balance_cents: number; tier_name: string; contact: string; remark: string; status: string; review_remark: string; created_at: string }> }>('/admin/agent-program/applications', { params: status ? { status } : {} })
+    return data.items ?? []
+  },
+  async reviewAgentApplication(id: number, payload: { approve: boolean; review_remark?: string }) {
+    const { data } = await http.post(`/admin/agent-program/applications/${id}/review`, payload)
     return data
   },
   async products(query: PageQuery & { category_id?: number } = {}) {

@@ -79,6 +79,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboard/ServiceDetailView.vue'),
       },
       {
+        path: 'agent-program',
+        name: 'agent-program',
+        component: () => import('@/views/dashboard/AgentProgramView.vue'),
+      },
+      {
         path: 'wallet',
         name: 'wallet',
         component: () => import('@/views/dashboard/WalletView.vue'),
