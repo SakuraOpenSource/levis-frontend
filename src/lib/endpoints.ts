@@ -162,7 +162,7 @@ export const catalogApi = {
   },
   /** 当前用户的代理加盟信息（等级/下一档/生效折扣）。 */
   async agentProgramSummary() {
-    const { data } = await http.get<{ enabled: boolean; tier: { id: number; name: string; min_balance_cents: number } | null; next_tier: { id: number; name: string; min_balance_cents: number } | null; bound: boolean; balance_cents: number; application: { id: number; tier_id: number; status: string; review_remark: string; created_at: string } | null; discounts: Array<{ category_id: number; discount_permille: number }> }>('/agent-program/summary')
+    const { data } = await http.get<{ enabled: boolean; mode: 'auto' | 'manual'; tier: { id: number; name: string; min_balance_cents: number } | null; next_tier: { id: number; name: string; min_balance_cents: number } | null; bound: boolean; balance_cents: number; application: { id: number; tier_id: number; status: string; review_remark: string; created_at: string } | null; discounts: Array<{ category_id: number; discount_permille: number }> }>('/agent-program/summary')
     return data
   },
 }
@@ -416,10 +416,10 @@ export const adminApi = {
     await http.delete(`/admin/categories/${id}`)
   },
   async agentProgram() {
-    const { data } = await http.get<{ enabled: boolean; tiers: Array<{ id: number; name: string; min_balance_cents: number; sort: number; discounts: Array<{ category_id: number; discount_permille: number }> }> }>('/admin/agent-program')
+    const { data } = await http.get<{ enabled: boolean; mode: string; tiers: Array<{ id: number; name: string; min_balance_cents: number; sort: number; discounts: Array<{ category_id: number; discount_permille: number }> }> }>('/admin/agent-program')
     return data
   },
-  async updateAgentProgram(payload: { enabled: boolean; tiers: Array<{ name: string; min_balance_cents: number; sort: number }>; discounts: Array<{ tier_id: number; category_id: number; discount_permille: number }> }) {
+  async updateAgentProgram(payload: { enabled: boolean; mode?: string; tiers: Array<{ name: string; min_balance_cents: number; sort: number }>; discounts: Array<{ tier_id: number; category_id: number; discount_permille: number }> }) {
     const { data } = await http.put('/admin/agent-program', payload)
     return data
   },

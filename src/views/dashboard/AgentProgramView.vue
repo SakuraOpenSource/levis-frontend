@@ -27,6 +27,7 @@ const categories = ref<Category[]>([])
 
 interface Summary {
   enabled: boolean
+  mode: 'auto' | 'manual'
   tier: { id: number; name: string; min_balance_cents: number } | null
   next_tier: { id: number; name: string; min_balance_cents: number } | null
   bound: boolean
@@ -197,7 +198,11 @@ onMounted(load)
         <CardHeader>
           <CardTitle>提交代理申请</CardTitle>
           <CardDescription>
-            余额尚未达标？提交申请说明情况，管理员审核通过后可直接预授权等级
+            {{
+              summary.mode === 'manual'
+                ? '当前为手动审核模式：需要余额达到所申请等级的门槛后才能提交申请，审核通过即预授权'
+                : '余额尚未达标？提交申请说明情况，管理员审核通过后可直接预授权等级'
+            }}
           </CardDescription>
         </CardHeader>
         <CardContent>

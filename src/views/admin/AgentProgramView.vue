@@ -24,6 +24,7 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const enabled = ref(false)
+const mode = ref<'auto' | 'manual'>('auto')
 
 interface TierRow {
   key: number
@@ -119,6 +120,7 @@ async function load() {
     ])
     loadApplications()
     enabled.value = cfg.enabled
+    mode.value = cfg.mode === 'manual' ? 'manual' : 'auto'
     tiers.value = (cfg.tiers ?? []).map((tier: { name: string; min_balance_cents: number; discounts?: Array<{ category_id: number; discount_permille: number }> }) => ({
       key: keySeq++,
       name: tier.name,
@@ -169,6 +171,7 @@ async function save() {
   try {
     await adminApi.updateAgentProgram({
       enabled: enabled.value,
+      mode: mode.value,
       tiers: tiers.value.map((tier) => ({
         name: tier.name.trim(),
         min_balance_cents: yuanToCents(tier.min_balance),
@@ -216,10 +219,26 @@ onMounted(load)
             <div class="space-y-1">
               <Label for="agent-enabled">启用代理加盟</Label>
               <p class="text-muted-foreground text-xs">
-                用户余额达到等级门槛即自动成为该级代理，无需申请
+                关闭后所有用户按原价购买
               </p>
             </div>
             <Switch id="agent-enabled" v-model="enabled" />
+          </div>
+
+          <div class="space-y-2 border-t pt-4">
+            <Label>升级模式</Label>
+            <Select v-model="mode">
+              <SelectTrigger class="max-w-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">余额达到门槛自动升级</SelectItem>
+                <SelectItem value="manual">管理员手动审核（申请需余额达标）</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-muted-foreground text-xs">
+              自动模式：余额达到门槛立即按该级折扣结算，无需申请；手动模式：用户提交申请后由管理员审核，提交时要求余额已达到所申请等级的门槛，审核通过即预授权
+            </p>
           </div>
         </CardContent>
       </Card>
