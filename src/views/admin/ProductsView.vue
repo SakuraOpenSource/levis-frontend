@@ -44,7 +44,40 @@ import {
   type Product,
   type ProductStatus,
   type Spec,
+  type UpstreamInterface,
 } from '@/lib/types'
+
+/** 接口商品的开通配置（前端编辑形态，区间以「输入单位」计，流量保存时换算成 GB）。 */
+interface ProvisionForm {
+  driver: 'incus' | 'qemu'
+  mode: 'fixed' | 'elastic'
+  cpu: { min: number; max: number }
+  memory_mb: { min: number; max: number }
+  disk_gb: { min: number; max: number }
+  bandwidth_mbps: { min: number; max: number }
+  traffic_gb: { min: number; max: number }
+}
+
+/** 弹性配置编辑器的资源行元数据。 */
+const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode'>; label: string; unit: string; min: number; step: number }[] = [
+  { key: 'cpu', label: 'CPU', unit: '核', min: 1, step: 1 },
+  { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, step: 128 },
+  { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, step: 1 },
+  { key: 'bandwidth_mbps', label: '带宽', unit: 'Mbps', min: 0, step: 1 },
+  { key: 'traffic_gb', label: '流量', unit: 'GB', min: 0, step: 1 },
+]
+
+function emptyProvision(): ProvisionForm {
+  return {
+    driver: 'incus',
+    mode: 'fixed',
+    cpu: { min: 1, max: 1 },
+    memory_mb: { min: 512, max: 512 },
+    disk_gb: { min: 10, max: 10 },
+    bandwidth_mbps: { min: 10, max: 10 },
+    traffic_gb: { min: 0, max: 0 },
+  }
+}
 
 const { t } = useI18n()
 const toast = useToast()
@@ -71,6 +104,12 @@ interface UpstreamProduct {
 const upstreamProducts = ref<UpstreamProduct[]>([])
 const upstreamLoading = ref(false)
 const syncingInfo = ref<number | null>(null)
+/** 接口管理里的接口列表：接口商品走这里而不是直接选插件。 */
+const interfaces = ref<UpstreamInterface[]>([])
+/** 流量录入单位：GB 或 TB（TB 保存时 ×1024 换算成 GB）。 */
+const trafficUnit = ref<'gb' | 'tb'>('gb')
+/** 接口商品的开通配置编辑状态。 */
+const provision = reactive<ProvisionForm>(emptyProvision())
 
 /** '0' 为「全部分组」的哨兵值，SelectItem 不接受空字符串。 */
 const ALL = '0'
@@ -93,6 +132,7 @@ const form = reactive({
   sort: '0',
   upstreamPluginId: '',
   upstreamProductId: '',
+  interfaceId: '',
 })
 
 /** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
@@ -175,7 +215,10 @@ function openCreate() {
     sort: '0',
     upstreamPluginId: '',
     upstreamProductId: '',
+    interfaceId: '',
   })
+  Object.assign(provision, emptyProvision())
+  trafficUnit.value = 'gb'
   specs.value = []
   dialogOpen.value = true
 }
@@ -194,9 +237,22 @@ function openEdit(item: Product) {
     sort: String(item.sort),
     upstreamPluginId: item.upstream_plugin_id || '',
     upstreamProductId: item.upstream_product_id || '',
+    interfaceId: item.interface_id ? String(item.interface_id) : '',
   })
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
+  if (item.provision_config) {
+    provision.driver = item.provision_config.driver
+    provision.mode = item.provision_config.mode
+    for (const field of PROVISION_FIELDS) {
+      const range = item.provision_config[field.key]
+      provision[field.key].min = range?.min ?? 0
+      provision[field.key].max = range?.max ?? 0
+    }
+  } else {
+    Object.assign(provision, emptyProvision())
+  }
+  trafficUnit.value = 'gb'
   dialogOpen.value = true
 }
 
@@ -231,6 +287,8 @@ async function save() {
       sort: Number(form.sort) || 0,
       upstream_plugin_id: form.upstreamPluginId,
       upstream_product_id: form.upstreamProductId,
+      interface_id: Number(form.interfaceId) || 0,
+      provision_config: form.interfaceId ? buildProvisionConfig() : null,
     }
     if (editing.value) {
       await adminApi.updateProduct(editing.value.id, payload)
@@ -299,15 +357,44 @@ async function syncInfo(item: Product) {
   }
 }
 
+/** 把编辑态整理成后端开通配置；流量按录入单位换算成 GB。 */
+function buildProvisionConfig() {
+  const scale = trafficUnit.value === 'tb' ? 1024 : 1
+  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode'>) => ({
+    min: provision[key].min * (key === 'traffic_gb' ? scale : 1),
+    max: provision[key].max * (key === 'traffic_gb' ? scale : 1),
+  })
+  return {
+    driver: provision.driver,
+    mode: provision.mode,
+    cpu: range('cpu'),
+    memory_mb: range('memory_mb'),
+    disk_gb: range('disk_gb'),
+    bandwidth_mbps: range('bandwidth_mbps'),
+    traffic_gb: range('traffic_gb'),
+  }
+}
+
+/** 选择接口后清掉传统上游绑定，两者互斥。 */
+function pickInterface(interfaceId: string) {
+  form.interfaceId = interfaceId
+  if (interfaceId) {
+    form.upstreamPluginId = ''
+    form.upstreamProductId = ''
+  }
+}
+
 onMounted(async () => {
   try {
-    const [cats, plugs] = await Promise.all([
+    const [cats, plugs, ifaces] = await Promise.all([
       adminApi.categories(),
       adminApi.provisionPlugins().catch(() => [] as { id: string; name: string }[]),
+      adminApi.interfaces().catch(() => [] as UpstreamInterface[]),
       loadProducts(),
     ])
     categories.value = cats
     provisionPlugins.value = plugs
+    interfaces.value = ifaces
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -384,12 +471,17 @@ onMounted(async () => {
                 </TableCell>
                 <TableCell><StateBadge kind="product" :value="item.status" /></TableCell>
                 <TableCell class="text-muted-foreground text-xs">
-                  {{ item.upstream_plugin_id || t('admin.productUpstreamNone') }}
+                  {{
+                    item.interface_id
+                      ? (interfaces.find((iface) => iface.id === item.interface_id)?.name ??
+                        `接口 #${item.interface_id}`)
+                      : item.upstream_plugin_id || t('admin.productUpstreamNone')
+                  }}
                 </TableCell>
                 <TableCell class="text-right">
                   <div class="flex justify-end gap-1">
                     <Button
-                      v-if="item.upstream_plugin_id"
+                      v-if="item.upstream_plugin_id && !item.interface_id"
                       variant="ghost"
                       size="icon"
                       class="size-8"
@@ -447,7 +539,98 @@ onMounted(async () => {
             <Input id="p-name" v-model="form.name" required />
           </div>
 
-          <div v-if="provisionPlugins.length" class="space-y-2">
+          <div v-if="interfaces.length" class="space-y-2">
+            <Label for="p-interface">接口</Label>
+            <Select :model-value="form.interfaceId" @update:model-value="(v) => pickInterface(String(v ?? ''))">
+              <SelectTrigger id="p-interface">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{{ t('admin.productUpstreamNone') }}</SelectItem>
+                <SelectItem v-for="iface in interfaces" :key="iface.id" :value="String(iface.id)">
+                  {{ iface.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-muted-foreground text-xs">选择接口后在其下创建开通配置（弹性或固定），购买页按配置渲染选配表单</p>
+          </div>
+
+          <template v-if="form.interfaceId">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="space-y-2">
+                <Label>驱动</Label>
+                <Select v-model="provision.driver">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="incus">Incus（容器）</SelectItem>
+                    <SelectItem value="qemu">QEMU（虚拟机）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="space-y-2">
+                <Label>配置类型</Label>
+                <Select v-model="provision.mode">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">管理员固定配置</SelectItem>
+                    <SelectItem value="elastic">弹性云（用户自选区间）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <Label>规格配置</Label>
+              <div
+                v-for="field in PROVISION_FIELDS"
+                :key="field.key"
+                class="flex items-center gap-2"
+              >
+                <span class="w-20 shrink-0 text-sm">{{ field.label }}</span>
+                <Input
+                  v-model.number="provision[field.key].min"
+                  type="number"
+                  :min="field.min"
+                  :step="field.step"
+                  class="w-28"
+                  :aria-label="`${field.label} 最小值`"
+                />
+                <template v-if="provision.mode === 'elastic'">
+                  <span class="text-muted-foreground text-xs">至</span>
+                  <Input
+                    v-model.number="provision[field.key].max"
+                    type="number"
+                    :min="field.min"
+                    :step="field.step"
+                    class="w-28"
+                    :aria-label="`${field.label} 最大值`"
+                  />
+                </template>
+                <span v-if="field.key !== 'traffic_gb'" class="text-muted-foreground text-xs">{{ field.unit }}</span>
+                <template v-else>
+                  <Select v-model="trafficUnit">
+                    <SelectTrigger class="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gb">GB</SelectItem>
+                      <SelectItem value="tb">TB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span class="text-muted-foreground text-xs">0 即不限</span>
+                </template>
+              </div>
+              <p v-if="provision.mode === 'elastic'" class="text-muted-foreground text-xs">
+                用户购买时可在最小值与最大值之间自由选择
+              </p>
+            </div>
+          </template>
+
+          <div v-if="provisionPlugins.length && !form.interfaceId" class="space-y-2">
             <Label for="p-upstream">{{ t('admin.productUpstream') }}</Label>
             <Select v-model="form.upstreamPluginId" @update:model-value="(v) => loadUpstreamProducts(String(v ?? ''))">
               <SelectTrigger id="p-upstream">

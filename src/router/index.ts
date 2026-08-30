@@ -56,6 +56,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/CheckoutView.vue'),
         meta: { requiresAuth: true },
       },
+      {
+        path: 'shop/products/:id',
+        name: 'shop-product-buy',
+        component: () => import('@/views/shop/ProductBuyView.vue'),
+        meta: { requiresAuth: true },
+      },
     ],
   },
   {
@@ -152,6 +158,11 @@ const routes: RouteRecordRaw[] = [
         path: 'agent-program',
         name: 'admin-agent-program',
         component: () => import('@/views/admin/AgentProgramView.vue'),
+      },
+      {
+        path: 'interfaces',
+        name: 'admin-interfaces',
+        component: () => import('@/views/admin/InterfacesView.vue'),
       },
       {
         path: 'products',

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import {
+  Cable,
   Crown,
   FolderTree,
   Gauge,
@@ -53,6 +54,7 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-categories' },
   },
   { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
+  { key: 'interfaces', label: '接口管理', icon: Cable, to: { name: 'admin-interfaces' } },
   { key: 'agent-program', label: '代理管理', icon: Crown, to: { name: 'admin-agent-program' } },
   { key: 'finance', label: t('adminNav.finance'), icon: Wallet, to: { name: 'admin-finance' } },
   { key: 'tickets', label: t('adminNav.tickets'), icon: Ticket, to: { name: 'admin-tickets' } },

@@ -40,6 +40,7 @@ import type {
   BillingCycle,
   Plugin,
   PluginConfigInput,
+  ModuleConfigField,
   PluginListResponse,
   ExternalPayment,
   PaymentMethod,
@@ -47,6 +48,7 @@ import type {
   PaymentPlugin,
   OSImage,
   UpstreamHost,
+  UpstreamInterface,
 } from './types'
 interface PageQuery {
   page?: number
@@ -150,6 +152,13 @@ export const catalogApi = {
     const { data } = await http.get<Product>(`/catalog/products/${id}`)
     return data
   },
+  /** 接口商品购买时可选的系统镜像（按商品驱动过滤）。 */
+  async productOs(id: number) {
+    const { data } = await http.get<{ items: { id: string; name: string; group: string }[] | null }>(
+      `/catalog/products/${id}/os`,
+    )
+    return data.items ?? []
+  },
   /** 可申请的代理等级列表。 */
   async agentProgramTiers() {
     const { data } = await http.get<{ items: Array<{ id: number; name: string; min_balance_cents: number }> }>('/agent-program/tiers')
@@ -233,6 +242,10 @@ export const orderApi = {
   },
   async get(id: number) {
     const { data } = await http.get<Order>(`/orders/${id}`)
+    return data
+  },
+  async buyNow(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string> }) {
+    const { data } = await http.post<Order>('/orders/direct', payload)
     return data
   },
   async pay(id: number) {
@@ -447,8 +460,29 @@ export const adminApi = {
     await http.delete(`/admin/products/${id}`)
   },
   async provisionPlugins() {
-    const { data } = await http.get<{ items: { id: string; name: string }[] }>('/admin/provision-plugins')
+    const { data } = await http.get<{
+      items: { id: string; name: string; config?: ModuleConfigField[] }[]
+    }>('/admin/provision-plugins')
     return data.items ?? []
+  },
+  async interfaces() {
+    const { data } = await http.get<{ items: UpstreamInterface[] | null }>('/admin/interfaces')
+    return data.items ?? []
+  },
+  async createInterface(payload: { name: string; plugin_id: string; config: Record<string, string> }) {
+    const { data } = await http.post<UpstreamInterface>('/admin/interfaces', payload)
+    return data
+  },
+  async updateInterface(id: number, payload: { name: string; plugin_id: string; config: Record<string, string> }) {
+    const { data } = await http.patch<UpstreamInterface>(`/admin/interfaces/${id}`, payload)
+    return data
+  },
+  async deleteInterface(id: number) {
+    await http.delete(`/admin/interfaces/${id}`)
+  },
+  async testInterface(id: number) {
+    const { data } = await http.post<{ message: string }>(`/admin/interfaces/${id}/test`)
+    return data
   },
   async upstreamProducts(pluginId: string) {
     const { data } = await http.get<{

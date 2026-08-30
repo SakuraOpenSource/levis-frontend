@@ -80,6 +80,45 @@ export interface Product extends Timestamps {
   sort: number
   upstream_plugin_id: string
   upstream_product_id: string
+  /** 非零表示经「接口管理」的接口开通（Virtualis 等弹性/固定配置商品）。 */
+  interface_id: number
+  provision_config: ProvisionConfig | null
+}
+
+/** 一项规格的取值区间；固定配置时 min === max。 */
+export interface SpecRange {
+  min: number
+  max: number
+}
+
+/** 接口商品的开通配置：驱动 + 各规格区间或固定值。 */
+export interface ProvisionConfig {
+  driver: 'incus' | 'qemu'
+  mode: 'fixed' | 'elastic'
+  cpu: SpecRange
+  memory_mb: SpecRange
+  disk_gb: SpecRange
+  bandwidth_mbps: SpecRange
+  traffic_gb: SpecRange
+}
+
+/** 「接口管理」里的一条上游接口。 */
+export interface UpstreamInterface extends Timestamps {
+  name: string
+  plugin_id: string
+  config: Record<string, string> | null
+}
+
+/** 开通插件模块声明的一个配置项（接口表单据此渲染）。 */
+export interface ModuleConfigField {
+  key: string
+  label: string
+  hint: string
+  type: string
+  required: boolean
+  secret: boolean
+  default: string
+  options: { value: string; label: string }[]
 }
 
 export interface Category extends Timestamps {

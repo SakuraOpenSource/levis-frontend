@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2 } from 'lucide-vue-next'
+import { RouterLink } from 'vue-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,7 +60,13 @@ const specs = computed(() => props.product.specs ?? [])
     </CardContent>
 
     <CardFooter class="px-5">
-      <Button class="w-full" :disabled="soldOut || props.pending" @click="emit('add', props.product)">
+      <!-- 接口商品需选配规格与系统，直接进购买页；普通商品进购物车 -->
+      <Button v-if="props.product.interface_id" class="w-full" :disabled="soldOut" as-child>
+        <RouterLink :to="{ name: 'shop-product-buy', params: { id: props.product.id } }">
+          {{ soldOut ? t('shop.soldOut') : '立即购买' }}
+        </RouterLink>
+      </Button>
+      <Button v-else class="w-full" :disabled="soldOut || props.pending" @click="emit('add', props.product)">
         <Loader2 v-if="props.pending" class="animate-spin" />
         {{ soldOut ? t('shop.soldOut') : t('shop.addToCart') }}
       </Button>
