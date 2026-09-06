@@ -2,13 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
 import StateBadge from '@/components/app/StateBadge.vue'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -141,12 +142,20 @@ async function loadUpstream() {
 }
 
 const poweringAction = ref<PowerAction | null>(null)
+const showUpstreamSSH = ref(false)
 
-const powerActions: { action: PowerAction; labelKey: string; icon: 'power' | 'powerOff' | 'reboot' | 'reinstall'; danger?: boolean }[] = [
-  { action: 'boot', labelKey: 'services.powerBoot', icon: 'power' },
-  { action: 'shutdown', labelKey: 'services.powerShutdown', icon: 'powerOff', danger: true },
-  { action: 'reboot', labelKey: 'services.powerReboot', icon: 'reboot' },
-  { action: 'reinstall', labelKey: 'services.powerReinstall', icon: 'reinstall', danger: true },
+async function copyText(value: string) {
+  try { await navigator.clipboard.writeText(value); toast.success('已复制') } catch { toast.error('复制失败，请手动复制') }
+}
+
+const powerActions: { action: PowerAction; label: string; icon: 'power' | 'powerOff' | 'reboot' | 'reinstall' | 'zap' | 'zapOff'; danger?: boolean }[] = [
+  { action: 'boot', label: '开机', icon: 'power' },
+  { action: 'shutdown', label: '关机', icon: 'powerOff', danger: true },
+  { action: 'reboot', label: '重启', icon: 'reboot' },
+  { action: 'hard_boot', label: '强制开机', icon: 'zap' },
+  { action: 'hard_stop', label: '强制关机', icon: 'zapOff', danger: true },
+  { action: 'hard_restart', label: '强制重启', icon: 'zap', danger: true },
+  { action: 'reinstall', label: '重装系统', icon: 'reinstall', danger: true },
 ]
 
 const availablePowerActions = computed(() => {
@@ -186,6 +195,7 @@ async function power(action: PowerAction) {
     await openReinstall()
     return
   }
+  if (action.startsWith('hard_') && !window.confirm(`确认执行「${powerActions.find((pa) => pa.action === action)?.label}」？强制操作可能丢失未保存数据。`)) return
   poweringAction.value = action
   try {
     await serviceApi.power(item.value.id, action)
@@ -300,9 +310,34 @@ onMounted(async () => {
             <Power v-else-if="pa.icon === 'power'" />
             <PowerOff v-else-if="pa.icon === 'powerOff'" />
             <RotateCcw v-else-if="pa.icon === 'reboot'" />
+            <Zap v-else-if="pa.icon === 'zap'" />
+            <ZapOff v-else-if="pa.icon === 'zapOff'" />
             <HardDriveDownload v-else />
-            {{ t(pa.labelKey) }}
+            {{ pa.label }}
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card v-if="item && canPower && (upstream?.cpu || upstream?.ipv4 || upstream?.ssh_host)">
+      <CardContent class="space-y-4">
+        <h2 class="text-sm font-medium">上游主机信息</h2>
+        <dl class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div v-if="upstream?.cpu"><dt class="text-muted-foreground text-xs">CPU</dt><dd>{{ upstream.cpu }} 核</dd></div>
+          <div v-if="upstream?.memory_mb"><dt class="text-muted-foreground text-xs">内存</dt><dd>{{ upstream.memory_mb }} MB</dd></div>
+          <div v-if="upstream?.disk_gb"><dt class="text-muted-foreground text-xs">硬盘</dt><dd>{{ upstream.disk_gb }} GB</dd></div>
+          <div v-if="upstream?.bandwidth_mbps"><dt class="text-muted-foreground text-xs">带宽</dt><dd>{{ upstream.bandwidth_mbps }} Mbps</dd></div>
+          <div v-if="upstream?.ipv4"><dt class="text-muted-foreground text-xs">IPv4</dt><dd class="break-all">{{ upstream.ipv4 }}</dd></div>
+          <div v-if="upstream?.ssh_port"><dt class="text-muted-foreground text-xs">SSH 端口</dt><dd class="tabular">{{ upstream.ssh_port }}</dd></div>
+          <div v-if="upstream?.ssh_username"><dt class="text-muted-foreground text-xs">SSH 用户</dt><dd>{{ upstream.ssh_username }}</dd></div>
+        </dl>
+        <div v-if="upstream?.ssh_password" class="space-y-1.5">
+          <div class="flex flex-wrap items-center gap-2">
+            <code class="bg-muted/40 rounded-md border px-3 py-2 text-sm tabular">{{ showUpstreamSSH ? upstream.ssh_password : '••••••••••••' }}</code>
+            <Button variant="outline" size="sm" @click="showUpstreamSSH = !showUpstreamSSH">{{ showUpstreamSSH ? '隐藏' : '显示' }}</Button>
+            <Button variant="outline" size="sm" @click="copyText(upstream.ssh_password)">复制</Button>
+            <Badge v-if="upstream?.ssh_ready" variant="outline">SSH 就绪</Badge>
+          </div>
         </div>
       </CardContent>
     </Card>

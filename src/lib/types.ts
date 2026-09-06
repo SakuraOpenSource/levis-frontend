@@ -85,10 +85,13 @@ export interface Product extends Timestamps {
   provision_config: ProvisionConfig | null
 }
 
-/** 一项规格的取值区间；固定配置时 min === max。 */
+/** 一项规格的取值区间；固定配置时 min === max 且 step/unit_price_cents 为 0。 */
 export interface SpecRange {
   min: number
   max: number
+  /** 历史配置可能没有这两个字段，按 1 / 0 兼容。 */
+  step?: number
+  unit_price_cents?: number
 }
 
 /** 接口商品的开通配置：驱动 + 各规格区间或固定值。 */
@@ -177,7 +180,7 @@ export interface Service extends Timestamps {
 }
 
 /** 电源操作动作：开机/关机/重启/重装系统。 */
-export type PowerAction = 'boot' | 'shutdown' | 'reboot' | 'reinstall'
+export type PowerAction = 'boot' | 'shutdown' | 'reboot' | 'hard_boot' | 'hard_stop' | 'hard_restart' | 'reinstall'
 
 export interface InvoiceItem extends Timestamps {
   invoice_id: number
@@ -258,6 +261,17 @@ export interface UpstreamHost {
   expiry: string
   upstream_order_id: string
   actions: string[]
+  /** 上游返回的资源/网络/SSH 信息；旧插件可能全部为空，页面按能力降级。 */
+  cpu?: number
+  memory_mb?: number
+  disk_gb?: number
+  bandwidth_mbps?: number
+  ipv4?: string
+  ssh_host?: string
+  ssh_port?: number
+  ssh_username?: string
+  ssh_password?: string
+  ssh_ready?: boolean
 }
 
 export interface ExternalPayment extends Timestamps {

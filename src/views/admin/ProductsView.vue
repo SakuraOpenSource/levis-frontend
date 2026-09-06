@@ -47,15 +47,15 @@ import {
   type UpstreamInterface,
 } from '@/lib/types'
 
-/** 接口商品的开通配置（前端编辑形态，区间以「输入单位」计，流量保存时换算成 GB）。 */
+/** 接口商品的开通配置（前端编辑形态，区间按各资源统一单位计）。 */
 interface ProvisionForm {
   driver: 'incus' | 'qemu'
   mode: 'fixed' | 'elastic'
-  cpu: { min: number; max: number }
-  memory_mb: { min: number; max: number }
-  disk_gb: { min: number; max: number }
-  bandwidth_mbps: { min: number; max: number }
-  traffic_gb: { min: number; max: number }
+  cpu: { min: number; max: number; step: number; unit_price_cents: number }
+  memory_mb: { min: number; max: number; step: number; unit_price_cents: number }
+  disk_gb: { min: number; max: number; step: number; unit_price_cents: number }
+  bandwidth_mbps: { min: number; max: number; step: number; unit_price_cents: number }
+  traffic_gb: { min: number; max: number; step: number; unit_price_cents: number }
 }
 
 /** 弹性配置编辑器的资源行元数据。 */
@@ -71,11 +71,11 @@ function emptyProvision(): ProvisionForm {
   return {
     driver: 'incus',
     mode: 'fixed',
-    cpu: { min: 1, max: 1 },
-    memory_mb: { min: 512, max: 512 },
-    disk_gb: { min: 10, max: 10 },
-    bandwidth_mbps: { min: 10, max: 10 },
-    traffic_gb: { min: 0, max: 0 },
+    cpu: { min: 1, max: 1, step: 1, unit_price_cents: 0 },
+    memory_mb: { min: 512, max: 512, step: 1, unit_price_cents: 0 },
+    disk_gb: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
+    bandwidth_mbps: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
+    traffic_gb: { min: 0, max: 0, step: 1, unit_price_cents: 0 },
   }
 }
 
@@ -106,8 +106,7 @@ const upstreamLoading = ref(false)
 const syncingInfo = ref<number | null>(null)
 /** 接口管理里的接口列表：接口商品走这里而不是直接选插件。 */
 const interfaces = ref<UpstreamInterface[]>([])
-/** 流量录入单位：GB 或 TB（TB 保存时 ×1024 换算成 GB）。 */
-const trafficUnit = ref<'gb' | 'tb'>('gb')
+/** 流量统一按 GB 录入、保存与展示。 */
 /** 接口商品的开通配置编辑状态。 */
 const provision = reactive<ProvisionForm>(emptyProvision())
 
@@ -218,7 +217,6 @@ function openCreate() {
     interfaceId: '',
   })
   Object.assign(provision, emptyProvision())
-  trafficUnit.value = 'gb'
   specs.value = []
   dialogOpen.value = true
 }
@@ -248,11 +246,12 @@ function openEdit(item: Product) {
       const range = item.provision_config[field.key]
       provision[field.key].min = range?.min ?? 0
       provision[field.key].max = range?.max ?? 0
+      provision[field.key].step = range?.step ?? 1
+      provision[field.key].unit_price_cents = range?.unit_price_cents ?? 0
     }
   } else {
     Object.assign(provision, emptyProvision())
   }
-  trafficUnit.value = 'gb'
   dialogOpen.value = true
 }
 
@@ -357,15 +356,18 @@ async function syncInfo(item: Product) {
   }
 }
 
-/** 把编辑态整理成后端开通配置；流量按录入单位换算成 GB。 */
+/** 把编辑态整理成后端开通配置；流量统一按 GB 保存。 */
 function buildProvisionConfig() {
-  const scale = trafficUnit.value === 'tb' ? 1024 : 1
   const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode'>) => {
-    const min = provision[key].min * (key === 'traffic_gb' ? scale : 1)
-    // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值，
-    // 避免遗留旧值造成 min > max 的假错误。
-    const max = provision.mode === 'fixed' ? min : provision[key].max * (key === 'traffic_gb' ? scale : 1)
-    return { min, max }
+    const min = provision[key].min
+    // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值。
+    const max = provision.mode === 'fixed' ? min : provision[key].max
+    return {
+      min,
+      max,
+      step: provision.mode === 'fixed' ? 0 : provision[key].step,
+      unit_price_cents: provision.mode === 'fixed' ? 0 : provision[key].unit_price_cents,
+    }
   }
   return {
     driver: provision.driver,
@@ -588,45 +590,56 @@ onMounted(async () => {
 
             <div class="space-y-3">
               <Label>规格配置</Label>
-              <div
-                v-for="field in PROVISION_FIELDS"
-                :key="field.key"
-                class="flex items-center gap-2"
-              >
-                <span class="w-20 shrink-0 text-sm">{{ field.label }}</span>
-                <Input
-                  v-model.number="provision[field.key].min"
-                  type="number"
-                  :min="field.min"
-                  class="w-28"
-                  :aria-label="`${field.label} 最小值`"
-                />
-                <template v-if="provision.mode === 'elastic'">
-                  <span class="text-muted-foreground text-xs">至</span>
+              <div v-for="field in PROVISION_FIELDS" :key="field.key" class="space-y-2 rounded-md border p-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="w-16 shrink-0 text-sm">{{ field.label }}</span>
                   <Input
-                    v-model.number="provision[field.key].max"
+                    v-model.number="provision[field.key].min"
                     type="number"
                     :min="field.min"
-                    class="w-28"
-                    :aria-label="`${field.label} 最大值`"
+                    class="w-24"
+                    :aria-label="`${field.label} 最小值`"
                   />
-                </template>
-                <span v-if="field.key !== 'traffic_gb'" class="text-muted-foreground text-xs">{{ field.unit }}</span>
-                <template v-else>
-                  <Select v-model="trafficUnit">
-                    <SelectTrigger class="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gb">GB</SelectItem>
-                      <SelectItem value="tb">TB</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span class="text-muted-foreground text-xs">0 即不限</span>
-                </template>
+                  <template v-if="provision.mode === 'elastic'">
+                    <span class="text-muted-foreground text-xs">至</span>
+                    <Input
+                      v-model.number="provision[field.key].max"
+                      type="number"
+                      :min="field.min"
+                      class="w-24"
+                      :aria-label="`${field.label} 最大值`"
+                    />
+                  </template>
+                  <span class="text-muted-foreground text-xs">{{ field.unit }}</span>
+                  <span v-if="field.key === 'traffic_gb'" class="text-muted-foreground text-xs">0 即不限</span>
+                </div>
+                <div v-if="provision.mode === 'elastic'" class="flex flex-wrap items-center gap-2 pl-[4.5rem]">
+                  <Label class="text-muted-foreground text-xs" :for="`provision-step-${field.key}`">步长</Label>
+                  <Input
+                    :id="`provision-step-${field.key}`"
+                    v-model.number="provision[field.key].step"
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="w-24"
+                    :aria-label="`${field.label} 步长`"
+                  />
+                  <span class="text-muted-foreground text-xs">{{ field.unit }}</span>
+                  <Label class="text-muted-foreground text-xs" :for="`provision-price-${field.key}`">每步加价</Label>
+                  <Input
+                    :id="`provision-price-${field.key}`"
+                    v-model.number="provision[field.key].unit_price_cents"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-28"
+                    :aria-label="`${field.label} 每步加价（分）`"
+                  />
+                  <span class="text-muted-foreground text-xs">分</span>
+                </div>
               </div>
               <p v-if="provision.mode === 'elastic'" class="text-muted-foreground text-xs">
-                用户购买时可在最小值与最大值之间自由选择
+                用户购买时可按步长选择；价格为基础价加各资源增量价格，流量统一使用 GB
               </p>
             </div>
           </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Loader2 } from 'lucide-vue-next'
+import { Loader2, Minus, Plus } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -68,10 +68,9 @@ const FIELDS = [
   { key: 'traffic_gb' as const, label: '流量', unit: 'GB', hint: '0 表示不限流量' },
 ]
 
-/** 大于 1024 GB 的流量以 TB 展示。 */
+/** 流量统一按 GB 展示，0 表示不限。 */
 function trafficLabel(gb: number) {
-  if (gb === 0) return '不限'
-  return gb >= 1024 ? `${(gb / 1024).toFixed(gb % 1024 === 0 ? 0 : 1)} TB` : `${gb} GB`
+  return gb === 0 ? '不限' : `${gb} GB`
 }
 
 const fixedSpecs = computed(() => {
@@ -93,6 +92,40 @@ function initPicks(config: ProvisionConfig) {
   picks.bandwidth_mbps = config.bandwidth_mbps.min
   picks.traffic_gb = config.traffic_gb.min
 }
+
+function rangeStep(field: (typeof FIELDS)[number], config = cfg.value) {
+  return Math.max(config?.[field.key].step ?? 1, 1)
+}
+
+function clampPick(field: (typeof FIELDS)[number]) {
+  if (!cfg.value) return
+  const range = cfg.value[field.key]
+  const step = rangeStep(field)
+  const raw = Number(picks[field.key])
+  const value = Number.isFinite(raw) ? raw : range.min
+  const steps = Math.round((value - range.min) / step)
+  picks[field.key] = Math.min(range.max, Math.max(range.min, range.min + steps * step))
+}
+
+function adjustPick(field: (typeof FIELDS)[number], direction: number) {
+  if (!cfg.value) return
+  const range = cfg.value[field.key]
+  const step = rangeStep(field)
+  picks[field.key] = Math.min(range.max, Math.max(range.min, picks[field.key] + direction * step))
+}
+
+const provisionExtraCents = computed(() => {
+  if (!cfg.value || cfg.value.mode !== 'elastic') return 0
+  return FIELDS.reduce((total, field) => {
+    const range = cfg.value![field.key]
+    const step = rangeStep(field)
+    const unitPrice = range.unit_price_cents ?? 0
+    return total + Math.max(0, Math.round((picks[field.key] - range.min) / step)) * unitPrice
+  }, 0)
+})
+
+const selectedUnitPriceCents = computed(() => (product.value?.price_cents ?? 0) + provisionExtraCents.value)
+const selectedTotalCents = computed(() => selectedUnitPriceCents.value * Math.max(quantity.value, 1))
 
 async function loadImages() {
   imagesLoading.value = true
@@ -120,8 +153,9 @@ async function submit() {
     for (const field of FIELDS) {
       const range = cfg.value[field.key]
       const value = picks[field.key]
-      if (value < range.min || value > range.max) {
-        formError.value = `${field.label}需在 ${range.min} - ${range.max} ${field.unit} 之间`
+      const step = rangeStep(field)
+      if (value < range.min || value > range.max || (value - range.min) % step !== 0) {
+        formError.value = `${field.label}需在 ${range.min} - ${range.max} ${field.unit} 之间，步长为 ${step}`
         return
       }
     }
@@ -202,15 +236,53 @@ onMounted(async () => {
                   {{ field.key === 'traffic_gb' ? trafficLabel(picks.traffic_gb) : `${picks[field.key]} ${field.unit}` }}
                 </span>
               </div>
-              <Input
-                :id="`pick-${field.key}`"
-                v-model.number="picks[field.key]"
-                type="number"
-                :min="cfg[field.key].min"
-                :max="cfg[field.key].max"
-              />
+              <div class="flex items-center gap-2">
+                <input
+                  :id="`pick-${field.key}-range`"
+                  v-model.number="picks[field.key]"
+                  type="range"
+                  class="accent-primary min-w-0 flex-1"
+                  :min="cfg[field.key].min"
+                  :max="cfg[field.key].max"
+                  :step="rangeStep(field)"
+                  :aria-label="field.label"
+                  @change="clampPick(field)"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  class="size-9 shrink-0"
+                  :disabled="picks[field.key] <= cfg[field.key].min"
+                  :aria-label="`${field.label}减少一个步长`"
+                  @click="adjustPick(field, -1)"
+                >
+                  <Minus />
+                </Button>
+                <Input
+                  :id="`pick-${field.key}`"
+                  v-model.number="picks[field.key]"
+                  type="number"
+                  :min="cfg[field.key].min"
+                  :max="cfg[field.key].max"
+                  :step="rangeStep(field)"
+                  class="w-24"
+                  @change="clampPick(field)"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  class="size-9 shrink-0"
+                  :disabled="picks[field.key] >= cfg[field.key].max"
+                  :aria-label="`${field.label}增加一个步长`"
+                  @click="adjustPick(field, 1)"
+                >
+                  <Plus />
+                </Button>
+              </div>
               <p class="text-muted-foreground text-xs">
-                {{ field.hint || `可选 ${cfg[field.key].min} - ${cfg[field.key].max} ${field.unit}` }}
+                {{ field.hint || `可选 ${cfg[field.key].min} - ${cfg[field.key].max} ${field.unit}，步长 ${rangeStep(field)}` }}
               </p>
             </div>
           </div>
@@ -247,9 +319,14 @@ onMounted(async () => {
           </div>
           <div class="ml-auto text-right">
             <p class="text-muted-foreground text-xs">
-              单价（{{ cycleLabel(product.billing_cycle) }}）
+              基础价（{{ cycleLabel(product.billing_cycle) }}）
             </p>
-            <Money class="text-xl font-semibold" :cents="product.price_cents * Math.max(quantity, 1)" />
+            <Money :cents="product.price_cents" />
+            <p v-if="provisionExtraCents" class="text-muted-foreground text-xs">
+              增量 + <Money :cents="provisionExtraCents" /> / 份
+            </p>
+            <p class="text-muted-foreground text-xs">总价</p>
+            <Money class="text-xl font-semibold" :cents="selectedTotalCents" />
           </div>
         </CardContent>
       </Card>
