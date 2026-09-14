@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
@@ -37,15 +38,16 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
-import {
-  BILLING_CYCLES,
-  type BillingCycle,
-  type Category,
-  type Product,
-  type ProductStatus,
-  type Spec,
-  type UpstreamInterface,
-} from '@/lib/types'
+ import {
+   BILLING_CYCLES,
+   type Article,
+   type BillingCycle,
+   type Category,
+   type Product,
+   type ProductStatus,
+   type Spec,
+   type UpstreamInterface,
+ } from '@/lib/types'
 
 /** 接口商品的开通配置（前端编辑形态，区间按各资源统一单位计）。 */
 interface ProvisionForm {
@@ -104,8 +106,10 @@ interface UpstreamProduct {
 const upstreamProducts = ref<UpstreamProduct[]>([])
 const upstreamLoading = ref(false)
 const syncingInfo = ref<number | null>(null)
-/** 接口管理里的接口列表：接口商品走这里而不是直接选插件。 */
-const interfaces = ref<UpstreamInterface[]>([])
+ /** 接口管理里的接口列表：接口商品走这里而不是直接选插件。 */
+ const interfaces = ref<UpstreamInterface[]>([])
+ /** 购买协议候选：全部文章（含草稿，标出状态），空表示无需协议。 */
+ const agreementArticles = ref<Article[]>([])
 /** 流量统一按 GB 录入、保存与展示。 */
 /** 接口商品的开通配置编辑状态。 */
 const provision = reactive<ProvisionForm>(emptyProvision())
@@ -120,19 +124,20 @@ const saving = ref(false)
 const formError = ref<string | null>(null)
 const deleting = ref<number | null>(null)
 
-const form = reactive({
-  categoryId: '',
-  name: '',
-  description: '',
-  priceYuan: '0',
-  billingCycle: 'monthly' as BillingCycle,
-  stock: '-1',
-  status: 'active' as ProductStatus,
-  sort: '0',
-  upstreamPluginId: '',
-  upstreamProductId: '',
-  interfaceId: '',
-})
+ const form = reactive({
+   categoryId: '',
+   name: '',
+   description: '',
+   priceYuan: '0',
+   billingCycle: 'monthly' as BillingCycle,
+   stock: '-1',
+   status: 'active' as ProductStatus,
+   sort: '0',
+   upstreamPluginId: '',
+   upstreamProductId: '',
+   interfaceId: '',
+   agreementArticleId: '',
+ })
 
 /** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
 const specs = ref<Spec[]>([])
@@ -203,19 +208,20 @@ async function load(target = page.value) {
 function openCreate() {
   editing.value = null
   formError.value = null
-  Object.assign(form, {
-    categoryId: categoryOptions.value[0] ? String(categoryOptions.value[0].id) : '',
-    name: '',
-    description: '',
-    priceYuan: '0',
-    billingCycle: 'monthly' as BillingCycle,
-    stock: '-1',
-    status: 'active' as ProductStatus,
-    sort: '0',
-    upstreamPluginId: '',
-    upstreamProductId: '',
-    interfaceId: '',
-  })
+   Object.assign(form, {
+     categoryId: categoryOptions.value[0] ? String(categoryOptions.value[0].id) : '',
+     name: '',
+     description: '',
+     priceYuan: '0',
+     billingCycle: 'monthly' as BillingCycle,
+     stock: '-1',
+     status: 'active' as ProductStatus,
+     sort: '0',
+     upstreamPluginId: '',
+     upstreamProductId: '',
+     interfaceId: '',
+     agreementArticleId: '',
+   })
   Object.assign(provision, emptyProvision())
   specs.value = []
   dialogOpen.value = true
@@ -224,19 +230,20 @@ function openCreate() {
 function openEdit(item: Product) {
   editing.value = item
   formError.value = null
-  Object.assign(form, {
-    categoryId: String(item.category_id),
-    name: item.name,
-    description: item.description,
-    priceYuan: (item.price_cents / 100).toFixed(2),
-    billingCycle: item.billing_cycle,
-    stock: String(item.stock),
-    status: item.status,
-    sort: String(item.sort),
-    upstreamPluginId: item.upstream_plugin_id || '',
-    upstreamProductId: item.upstream_product_id || '',
-    interfaceId: item.interface_id ? String(item.interface_id) : '',
-  })
+   Object.assign(form, {
+     categoryId: String(item.category_id),
+     name: item.name,
+     description: item.description,
+     priceYuan: (item.price_cents / 100).toFixed(2),
+     billingCycle: item.billing_cycle,
+     stock: String(item.stock),
+     status: item.status,
+     sort: String(item.sort),
+     upstreamPluginId: item.upstream_plugin_id || '',
+     upstreamProductId: item.upstream_product_id || '',
+     interfaceId: item.interface_id ? String(item.interface_id) : '',
+     agreementArticleId: item.agreement_article_id ? String(item.agreement_article_id) : '',
+   })
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
   if (item.provision_config) {
@@ -274,21 +281,22 @@ async function save() {
 
   saving.value = true
   try {
-    const payload = {
-      category_id: Number(form.categoryId),
-      name: form.name.trim(),
-      description: form.description.trim(),
-      specs: cleanSpecs,
-      price_cents: priceCents,
-      billing_cycle: form.billingCycle,
-      stock: Number(form.stock),
-      status: form.status,
-      sort: Number(form.sort) || 0,
-      upstream_plugin_id: form.upstreamPluginId,
-      upstream_product_id: form.upstreamProductId,
-      interface_id: Number(form.interfaceId) || 0,
-      provision_config: form.interfaceId ? buildProvisionConfig() : null,
-    }
+     const payload = {
+       category_id: Number(form.categoryId),
+       name: form.name.trim(),
+       description: form.description.trim(),
+       specs: cleanSpecs,
+       price_cents: priceCents,
+       billing_cycle: form.billingCycle,
+       stock: Number(form.stock),
+       status: form.status,
+       sort: Number(form.sort) || 0,
+       upstream_plugin_id: form.upstreamPluginId,
+       upstream_product_id: form.upstreamProductId,
+       interface_id: Number(form.interfaceId) || 0,
+       provision_config: form.interfaceId ? buildProvisionConfig() : null,
+       agreement_article_id: form.agreementArticleId ? Number(form.agreementArticleId) : null,
+     }
     if (editing.value) {
       await adminApi.updateProduct(editing.value.id, payload)
       toast.success(t('common.saved'))
@@ -305,8 +313,19 @@ async function save() {
   }
 }
 
-async function remove(item: Product) {
-  if (!window.confirm(t('admin.deleteProductConfirm', { name: item.name }))) return
+const confirmOpen = ref(false)
+const confirmTarget = ref<Product | null>(null)
+
+/** 先弹确认框再删：原生 confirm 样式不可控，且容易被浏览器拦截。 */
+function askRemove(item: Product) {
+  confirmTarget.value = item
+  confirmOpen.value = true
+}
+
+async function remove() {
+  const item = confirmTarget.value
+  confirmOpen.value = false
+  if (!item) return
   deleting.value = item.id
   try {
     await adminApi.deleteProduct(item.id)
@@ -389,23 +408,25 @@ function pickInterface(interfaceId: string) {
   }
 }
 
-onMounted(async () => {
-  try {
-    const [cats, plugs, ifaces] = await Promise.all([
-      adminApi.categories(),
-      adminApi.provisionPlugins().catch(() => [] as { id: string; name: string }[]),
-      adminApi.interfaces().catch(() => [] as UpstreamInterface[]),
-      loadProducts(),
-    ])
-    categories.value = cats
-    provisionPlugins.value = plugs
-    interfaces.value = ifaces
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    loading.value = false
-  }
-})
+ onMounted(async () => {
+   try {
+     const [cats, plugs, ifaces, agreements] = await Promise.all([
+       adminApi.categories(),
+       adminApi.provisionPlugins().catch(() => [] as { id: string; name: string }[]),
+       adminApi.interfaces().catch(() => [] as UpstreamInterface[]),
+       adminApi.articles({ page: 1, page_size: 200 }).catch(() => ({ items: [] as Article[] })),
+       loadProducts(),
+     ])
+     categories.value = cats
+     provisionPlugins.value = plugs
+     interfaces.value = ifaces
+     agreementArticles.value = agreements.items ?? []
+   } catch (err) {
+     error.value = errorMessage(err)
+   } finally {
+     loading.value = false
+   }
+ })
 </script>
 
 <template>
@@ -421,7 +442,7 @@ onMounted(async () => {
 
     <Alert v-if="!loading && !hasCategory" variant="warning">
       <AlertDescription class="flex flex-wrap items-center gap-3">
-        {{ t('admin.noCategoryYet') }}
+        <span class="min-w-48 flex-1">{{ t('admin.noCategoryYet') }}</span>
         <Button variant="outline" size="sm" as-child>
           <RouterLink :to="{ name: 'admin-categories' }">{{ t('adminNav.categories') }}</RouterLink>
         </Button>
@@ -513,7 +534,7 @@ onMounted(async () => {
                       class="size-8"
                       :disabled="deleting === item.id"
                       :aria-label="t('common.delete')"
-                      @click="remove(item)"
+                      @click="askRemove(item)"
                     >
                       <Loader2 v-if="deleting === item.id" class="animate-spin" />
                       <Trash2 v-else class="text-destructive" />
@@ -692,10 +713,25 @@ onMounted(async () => {
             </Select>
           </div>
 
-          <div class="space-y-2">
-            <Label for="p-desc">{{ t('admin.productDescription') }}</Label>
-            <Textarea id="p-desc" v-model="form.description" rows="3" />
-          </div>
+           <div class="space-y-2">
+             <Label for="p-desc">{{ t('admin.productDescription') }}</Label>
+             <Textarea id="p-desc" v-model="form.description" rows="3" />
+           </div>
+           <div class="space-y-2">
+             <Label for="p-agreement">购买协议（选填）</Label>
+             <Select v-model="form.agreementArticleId">
+               <SelectTrigger id="p-agreement">
+                 <SelectValue placeholder="无需协议" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="">无需协议</SelectItem>
+                 <SelectItem v-for="article in agreementArticles" :key="article.id" :value="String(article.id)">
+                   {{ article.title }}<span v-if="article.status !== 'published'" class="text-muted-foreground">（草稿）</span>
+                 </SelectItem>
+               </SelectContent>
+             </Select>
+             <p class="text-muted-foreground text-xs">选择后，用户购买该商品前必须勾选同意该协议；买家仅能查看已发布文章</p>
+           </div>
 
           <div class="space-y-2">
             <Label>{{ t('admin.productSpecs') }}</Label>
@@ -791,5 +827,13 @@ onMounted(async () => {
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="t('common.delete')"
+      :description="confirmTarget ? t('admin.deleteProductConfirm', { name: confirmTarget.name }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Loader2, Search, X } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
@@ -99,9 +100,15 @@ async function openDetail(record: Verification) {
   }
 }
 
+const approveOpen = ref(false)
+
+function askApprove() {
+  approveOpen.value = true
+}
+
 async function approve() {
   if (!detail.value) return
-  if (!window.confirm(t('admin.approveConfirm'))) return
+  approveOpen.value = false
   acting.value = true
   try {
     await adminApi.approveVerification(detail.value.id)
@@ -314,7 +321,7 @@ onMounted(() => load())
               <X />
               {{ t('admin.reject') }}
             </Button>
-            <Button type="button" :disabled="acting" @click="approve">
+            <Button type="button" :disabled="acting" @click="askApprove">
               <Loader2 v-if="acting" class="animate-spin" />
               <Check v-else />
               {{ t('admin.approve') }}
@@ -350,5 +357,12 @@ onMounted(() => load())
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="approveOpen"
+      :title="t('admin.approve')"
+      :description="t('admin.approveConfirm')"
+      :confirm-text="t('admin.approve')"
+      @confirm="approve"
+    />
   </div>
 </template>

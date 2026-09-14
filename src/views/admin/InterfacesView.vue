@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, Pencil, PlugZap, Plus, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
@@ -149,8 +150,18 @@ async function save() {
   }
 }
 
-async function remove(item: UpstreamInterface) {
-  if (!window.confirm(`确定删除接口「${item.name}」？`)) return
+const confirmOpen = ref(false)
+const confirmTarget = ref<UpstreamInterface | null>(null)
+
+function askRemove(item: UpstreamInterface) {
+  confirmTarget.value = item
+  confirmOpen.value = true
+}
+
+async function remove() {
+  const item = confirmTarget.value
+  confirmOpen.value = false
+  if (!item) return
   deleting.value = item.id
   try {
     await adminApi.deleteInterface(item.id)
@@ -241,7 +252,7 @@ onMounted(load)
                       class="size-8"
                       :disabled="deleting === item.id"
                       aria-label="删除"
-                      @click="remove(item)"
+                      @click="askRemove(item)"
                     >
                       <Loader2 v-if="deleting === item.id" class="animate-spin" />
                       <Trash2 v-else class="text-destructive" />
@@ -320,5 +331,13 @@ onMounted(load)
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="t('common.delete')"
+      :description="confirmTarget ? t('admin.deleteInterfaceConfirm', { name: confirmTarget.name }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

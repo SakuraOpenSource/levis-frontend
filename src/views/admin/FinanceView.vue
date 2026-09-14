@@ -3,9 +3,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
+import Money from '@/components/app/Money.vue'
+import Pager from '@/components/app/Pager.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
+import StateBadge from '@/components/app/StateBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -30,11 +34,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
-import type { PaymentMethodAdmin, PaymentPlugin } from '@/lib/types'
+import { formatDateTime, isZeroTime } from '@/lib/utils'
+import type {
+  AdminInvoiceDetail,
+  Invoice,
+  InvoiceStatus,
+  PaymentMethodAdmin,
+  PaymentPlugin,
+} from '@/lib/types'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -162,8 +174,18 @@ async function save() {
   }
 }
 
-async function remove(item: PaymentMethodAdmin) {
-  if (!window.confirm(t('admin.deletePaymentMethodConfirm', { name: item.name }))) return
+const confirmOpen = ref(false)
+const confirmTarget = ref<PaymentMethodAdmin | null>(null)
+
+function askRemove(item: PaymentMethodAdmin) {
+  confirmTarget.value = item
+  confirmOpen.value = true
+}
+
+async function remove() {
+  const item = confirmTarget.value
+  confirmOpen.value = false
+  if (!item) return
   try {
     await adminApi.deletePaymentMethod(item.id)
     toast.success(t('common.deleted'))
@@ -173,20 +195,81 @@ async function remove(item: PaymentMethodAdmin) {
   }
 }
 
-onMounted(load)
+const tab = ref<'methods' | 'invoices'>('methods')
+
+const invItems = ref<Invoice[]>([])
+const invTotal = ref(0)
+const invPage = ref(1)
+const invPageSize = ref(20)
+const invLoading = ref(false)
+const invError = ref<string | null>(null)
+const invStatus = ref<InvoiceStatus | 'all'>('all')
+const invUserId = ref('')
+const invDetailOpen = ref(false)
+const invDetail = ref<AdminInvoiceDetail | null>(null)
+const invDetailLoading = ref(false)
+
+const INV_STATUSES: InvoiceStatus[] = ['unpaid', 'paid', 'cancelled']
+
+async function loadInvoices(target = invPage.value) {
+  invLoading.value = true
+  invError.value = null
+  try {
+    const userId = Number(invUserId.value)
+    const result = await adminApi.invoices({
+      page: target,
+      page_size: invPageSize.value,
+      user_id: invUserId.value.trim() && Number.isFinite(userId) && userId > 0 ? userId : undefined,
+      status: invStatus.value === 'all' ? undefined : invStatus.value,
+    })
+    invItems.value = result.items ?? []
+    invTotal.value = result.total
+    invPage.value = result.page
+    invPageSize.value = result.page_size
+  } catch (err) {
+    invError.value = errorMessage(err)
+  } finally {
+    invLoading.value = false
+  }
+}
+
+async function openInvoice(id: number) {
+  invDetail.value = null
+  invDetailLoading.value = true
+  invDetailOpen.value = true
+  try {
+    invDetail.value = await adminApi.invoice(id)
+  } catch (err) {
+    toast.error(errorMessage(err))
+    invDetailOpen.value = false
+  } finally {
+    invDetailLoading.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadInvoices()
+})
 </script>
 
 <template>
   <div class="space-y-6">
     <PageHeader :title="t('admin.financeTitle')" :description="t('admin.financeSubtitle')">
       <template #actions>
-        <Button @click="openCreate">
+        <Button v-if="tab === 'methods'" @click="openCreate">
           <Plus />
           {{ t('admin.newPaymentMethod') }}
         </Button>
       </template>
     </PageHeader>
 
+    <Tabs v-model="tab">
+      <TabsList>
+        <TabsTrigger value="methods">{{ t('adminInvoices.tabMethods') }}</TabsTrigger>
+        <TabsTrigger value="invoices">{{ t('adminInvoices.tabInvoices') }}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="methods">
     <ErrorAlert :message="error" />
     <LoadingBlock v-if="loading" :rows="4" />
 
@@ -231,7 +314,7 @@ onMounted(load)
                     <Button variant="ghost" size="icon" class="size-8" @click="openEdit(item)">
                       <Pencil class="size-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" class="size-8" @click="remove(item)">
+                    <Button variant="ghost" size="icon" class="size-8" @click="askRemove(item)">
                       <Trash2 class="text-destructive size-4" />
                     </Button>
                   </div>
@@ -242,6 +325,89 @@ onMounted(load)
         </CardContent>
       </Card>
     </template>
+      </TabsContent>
+      <TabsContent value="invoices" class="space-y-4">
+        <Card class="py-0">
+          <CardContent class="flex flex-wrap items-end gap-3 py-4">
+            <div class="space-y-1.5">
+              <Label>{{ t('adminInvoices.status') }}</Label>
+              <Select
+                :model-value="invStatus"
+                @update:model-value="(v: any) => { invStatus = v as InvoiceStatus | 'all'; loadInvoices(1) }"
+              >
+                <SelectTrigger class="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{{ t('tickets.filterAll') }}</SelectItem>
+                  <SelectItem v-for="st in INV_STATUSES" :key="st" :value="st">
+                    {{ t(`invoiceStatus.${st}`) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-1.5">
+              <Label for="inv-user">{{ t('adminInvoices.payer') }} ID</Label>
+              <Input
+                id="inv-user"
+                v-model="invUserId"
+                class="w-36"
+                inputmode="numeric"
+                @keyup.enter="loadInvoices(1)"
+              />
+            </div>
+            <Button variant="outline" @click="loadInvoices(1)">{{ t('common.search') }}</Button>
+          </CardContent>
+        </Card>
+
+        <ErrorAlert :message="invError" />
+        <LoadingBlock v-if="invLoading" :rows="4" />
+
+        <template v-else>
+          <Card class="py-0">
+            <CardContent class="px-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{{ t('adminInvoices.invoiceNo') }}</TableHead>
+                    <TableHead>{{ t('adminInvoices.payer') }}</TableHead>
+                    <TableHead>{{ t('adminInvoices.orderId') }}</TableHead>
+                    <TableHead>{{ t('adminInvoices.status') }}</TableHead>
+                    <TableHead class="text-right">{{ t('adminInvoices.total') }}</TableHead>
+                    <TableHead>{{ t('adminInvoices.paidAt') }}</TableHead>
+                    <TableHead>{{ t('adminInvoices.createdAt') }}</TableHead>
+                    <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableEmpty v-if="!invItems.length" :colspan="8">{{ t('adminInvoices.empty') }}</TableEmpty>
+                  <TableRow v-for="item in invItems" v-else :key="item.id">
+                    <TableCell class="font-medium tabular">{{ item.invoice_no }}</TableCell>
+                    <TableCell class="tabular">#{{ item.user_id }}</TableCell>
+                    <TableCell class="tabular">{{ item.order_id ?? '-' }}</TableCell>
+                    <TableCell><StateBadge kind="invoice" :value="item.status" /></TableCell>
+                    <TableCell class="text-right"><Money :cents="item.total_cents" /></TableCell>
+                    <TableCell class="tabular">
+                      {{ isZeroTime(item.paid_at) ? '-' : formatDateTime(item.paid_at) }}
+                    </TableCell>
+                    <TableCell class="text-muted-foreground text-xs tabular">
+                      {{ formatDateTime(item.created_at) }}
+                    </TableCell>
+                    <TableCell class="text-right">
+                      <Button variant="ghost" size="sm" @click="openInvoice(item.id)">
+                        {{ t('common.detail') }}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Pager :page="invPage" :page-size="invPageSize" :total="invTotal" @change="loadInvoices" />
+        </template>
+      </TabsContent>
+    </Tabs>
 
     <Dialog v-model:open="dialogOpen">
       <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
@@ -349,5 +515,66 @@ onMounted(load)
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog v-model:open="invDetailOpen">
+      <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{{ t('adminInvoices.detailTitle') }}</DialogTitle>
+          <DialogDescription v-if="invDetail" class="font-mono">{{ invDetail.invoice_no }}</DialogDescription>
+        </DialogHeader>
+        <LoadingBlock v-if="invDetailLoading" :rows="3" />
+        <div v-else-if="invDetail" class="space-y-4">
+          <div>
+            <p class="mb-2 text-sm font-medium">{{ t('adminInvoices.items') }}</p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t('adminInvoices.description') }}</TableHead>
+                  <TableHead class="text-right">{{ t('adminInvoices.amount') }}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="line in invDetail.items ?? []" :key="line.id">
+                  <TableCell>{{ line.description }}</TableCell>
+                  <TableCell class="text-right"><Money :cents="line.amount_cents" /></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+          <div>
+            <p class="mb-2 text-sm font-medium">{{ t('adminInvoices.relatedPayments') }}</p>
+            <p v-if="!invDetail.external_payments?.length" class="text-muted-foreground text-sm">
+              {{ t('adminInvoices.noPayments') }}
+            </p>
+            <div
+              v-for="p in invDetail.external_payments ?? []"
+              :key="p.id"
+              class="mb-2 space-y-1 rounded-lg border p-3 text-sm"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-medium tabular">#{{ p.id }} · {{ p.plugin_id }}</span>
+                <Badge :variant="p.status === 'paid' ? 'success' : p.status === 'failed' ? 'destructive' : 'warning'">
+                  {{ t(`payment.${p.status}`) }}
+                </Badge>
+              </div>
+              <div class="text-muted-foreground text-xs tabular">
+                {{ t('adminInvoices.paidAmount') }}: <Money :cents="p.paid_amount_cents" />
+                <span v-if="!isZeroTime(p.paid_at)"> · {{ formatDateTime(p.paid_at) }}</span>
+              </div>
+              <p v-if="p.failure_reason" class="text-destructive text-xs">
+                {{ t('adminInvoices.failureReason') }}: {{ p.failure_reason }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="t('common.delete')"
+      :description="confirmTarget ? t('admin.deletePaymentMethodConfirm', { name: confirmTarget.name }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

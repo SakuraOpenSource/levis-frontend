@@ -1,9 +1,13 @@
 import { http, postForm } from './api'
 import type {
+  AdminInvoiceDetail,
   AdminStats,
   APIKeyCreated,
   APIKeyInput,
   APIKeyList,
+  Article,
+  ArticleInput,
+  ArticleStatus,
   Bootstrap,
   CaptchaChallenge,
   CaptchaSettings,
@@ -176,6 +180,21 @@ export const catalogApi = {
   },
 }
 
+/**
+ * 知识库文章（公开）。只返回已发布的；草稿与不存在一律 404，
+ * 避免通过公开接口探测草稿的存在。
+ */
+export const articleApi = {
+  async getById(id: number) {
+    const { data } = await http.get<Article>(`/articles/by-id/${id}`)
+    return data
+  },
+  async get(slug: string) {
+    const { data } = await http.get<Article>(`/articles/${encodeURIComponent(slug)}`)
+    return data
+  },
+}
+
 /** 购物车。写操作统一返回最新购物车，省一次拉取。 */
 export const cartApi = {
   async list() {
@@ -229,11 +248,10 @@ export const paymentApi = {
     return data
   },
 }
-
-/** 订单与支付。 */
+/** 订单与支付。agree 表示已阅读并同意商品绑定的购买协议。 */
 export const orderApi = {
-  async create() {
-    const { data } = await http.post<Order>('/orders')
+  async create(agree = false) {
+    const { data } = await http.post<Order>('/orders', { agree })
     return data
   },
   async list(query: PageQuery = {}) {
@@ -244,7 +262,7 @@ export const orderApi = {
     const { data } = await http.get<Order>(`/orders/${id}`)
     return data
   },
-  async buyNow(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string> }) {
+  async buyNow(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string>; agree?: boolean }) {
     const { data } = await http.post<Order>('/orders/direct', payload)
     return data
   },
@@ -269,6 +287,11 @@ export const serviceApi = {
   },
   async renew(id: number) {
     const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
+    return data
+  },
+  /** 重试上游开通：仅 pending/failed 状态可重试，成功后服务变为 active。 */
+  async retry(id: number) {
+    const { data } = await http.post<Service>(`/services/${id}/retry`)
     return data
   },
   async power(id: number, action: PowerAction, os?: string) {
@@ -507,8 +530,18 @@ export const adminApi = {
     })
     return data
   },
+  /** 跨用户服务总览，支持按用户、商品与状态过滤。 */
+  async services(query: PageQuery & { user_id?: number; product_id?: number; status?: string } = {}) {
+    const { data } = await http.get<Page<Service>>('/admin/services', { params: query })
+    return data
+  },
   async updateService(id: number, status: ServiceStatus) {
     const { data } = await http.patch<Service>(`/admin/services/${id}`, { status })
+    return data
+  },
+  /** 以管理员身份重试任意服务的上游开通（仅 pending/failed 可重试）。 */
+  async retryService(id: number) {
+    const { data } = await http.post<Service>(`/admin/services/${id}/retry`)
     return data
   },
   async deleteService(id: number) {
@@ -521,6 +554,47 @@ export const adminApi = {
   async bindService(id: number, payload: { upstream_plugin_id: string; upstream_host_id: string }) {
     const { data } = await http.post<Service>(`/admin/services/${id}/bind`, payload)
     return data
+  },
+  /** 全部订单，支持按用户与状态过滤。 */
+  async orders(query: PageQuery & { user_id?: number; status?: string } = {}) {
+    const { data } = await http.get<Page<Order>>('/admin/orders', { params: query })
+    return data
+  },
+  async order(id: number) {
+    const { data } = await http.get<Order>(`/admin/orders/${id}`)
+    return data
+  },
+  /** 全部账单，支持按用户与状态过滤。 */
+  async invoices(query: PageQuery & { user_id?: number; status?: string } = {}) {
+    const { data } = await http.get<Page<Invoice>>('/admin/invoices', { params: query })
+    return data
+  },
+  /** 账单详情：明细 + 关联的外部支付。 */
+  async invoice(id: number) {
+    const { data } = await http.get<AdminInvoiceDetail>(`/admin/invoices/${id}`)
+    return data
+  },
+  /** 文章列表，status 为空时不过滤。 */
+  async articles(query: PageQuery & { status?: ArticleStatus | '' } = {}) {
+    const params = { ...query, status: query.status || undefined }
+    const { data } = await http.get<Page<Article>>('/admin/articles', { params })
+    return data
+  },
+  async article(id: number) {
+    const { data } = await http.get<Article>(`/admin/articles/${id}`)
+    return data
+  },
+  async createArticle(payload: ArticleInput) {
+    const { data } = await http.post<Article>('/admin/articles', payload)
+    return data
+  },
+  async updateArticle(id: number, payload: ArticleInput) {
+    const { data } = await http.patch<Article>(`/admin/articles/${id}`, payload)
+    return data
+  },
+  /** 仍被商品引用为购买协议时后端会 409 拒绝。 */
+  async deleteArticle(id: number) {
+    await http.delete(`/admin/articles/${id}`)
   },
   async paymentPlugins() {
     const { data } = await http.get<{ items: PaymentPlugin[] }>('/admin/payment-plugins')

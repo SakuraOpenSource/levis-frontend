@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Link2, Loader2, Pause, Play, Plus, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
@@ -101,9 +102,14 @@ async function load(target = page.value) {
   }
 }
 
-async function toggleStatus(item: Service) {
+const suspendOpen = ref(false)
+const suspendTarget = ref<Service | null>(null)
+
+async function toggleStatus(item: Service, confirmed = false) {
   const next = item.status === 'active' ? 'suspended' : 'active'
-  if (next === 'suspended' && !window.confirm(t('admin.suspendServiceConfirm', { name: item.name }))) {
+  if (next === 'suspended' && !confirmed) {
+    suspendTarget.value = item
+    suspendOpen.value = true
     return
   }
   busyId.value = item.id
@@ -118,8 +124,26 @@ async function toggleStatus(item: Service) {
   }
 }
 
-async function remove(item: Service) {
-  if (!window.confirm(t('admin.deleteServiceConfirm', { name: item.name }))) return
+async function confirmSuspend() {
+  const item = suspendTarget.value
+  suspendOpen.value = false
+  suspendTarget.value = null
+  if (!item) return
+  await toggleStatus(item, true)
+}
+
+const deleteOpen = ref(false)
+const deleteTarget = ref<Service | null>(null)
+
+function askRemove(item: Service) {
+  deleteTarget.value = item
+  deleteOpen.value = true
+}
+
+async function remove() {
+  const item = deleteTarget.value
+  deleteOpen.value = false
+  if (!item) return
   busyId.value = item.id
   try {
     await adminApi.deleteService(item.id)
@@ -310,7 +334,7 @@ onMounted(() => load())
                       class="size-8"
                       :disabled="busyId === item.id"
                       :aria-label="t('common.delete')"
-                      @click="remove(item)"
+                      @click="askRemove(item)"
                     >
                       <Trash2 class="text-destructive" />
                     </Button>
@@ -419,5 +443,20 @@ onMounted(() => load())
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="suspendOpen"
+      :title="t('admin.suspend')"
+      :description="suspendTarget ? t('admin.suspendServiceConfirm', { name: suspendTarget.name }) : ''"
+      :confirm-text="t('admin.suspend')"
+      @confirm="confirmSuspend"
+    />
+    <ConfirmDialog
+      v-model:open="deleteOpen"
+      :title="t('common.delete')"
+      :description="deleteTarget ? t('admin.deleteServiceConfirm', { name: deleteTarget.name }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CornerDownRight, Loader2, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
@@ -160,8 +161,18 @@ async function save() {
   }
 }
 
-async function remove(item: Category) {
-  if (!window.confirm(t('admin.deleteCategoryConfirm', { name: item.name }))) return
+const confirmOpen = ref(false)
+const confirmTarget = ref<Category | null>(null)
+
+function askRemove(item: Category) {
+  confirmTarget.value = item
+  confirmOpen.value = true
+}
+
+async function remove() {
+  const item = confirmTarget.value
+  confirmOpen.value = false
+  if (!item) return
   deleting.value = item.id
   try {
     await adminApi.deleteCategory(item.id)
@@ -241,7 +252,7 @@ onMounted(load)
                     class="size-8"
                     :disabled="deleting === row.item.id"
                     :aria-label="t('common.delete')"
-                    @click="remove(row.item)"
+                    @click="askRemove(row.item)"
                   >
                     <Loader2 v-if="deleting === row.item.id" class="animate-spin" />
                     <Trash2 v-else class="text-destructive" />
@@ -315,5 +326,13 @@ onMounted(load)
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="t('common.delete')"
+      :description="confirmTarget ? t('admin.deleteCategoryConfirm', { name: confirmTarget.name }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

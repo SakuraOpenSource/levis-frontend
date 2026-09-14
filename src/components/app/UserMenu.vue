@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { LayoutDashboard, LogOut, Moon, Settings, Sun, User } from 'lucide-vue-next'
 
+import AccentPicker from '@/components/app/AccentPicker.vue'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -70,6 +71,11 @@ async function onLogout() {
               {{ t('nav.admin') }}
             </RouterLink>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <div class="px-2 py-1.5">
+            <p class="text-muted-foreground mb-2 text-xs">{{ t('appearance.accent') }}</p>
+            <AccentPicker />
+          </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" @select="onLogout">
             <LogOut />

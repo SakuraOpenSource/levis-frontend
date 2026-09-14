@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Copy, IdCard, Loader2, Plus, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
@@ -153,8 +154,18 @@ async function copySecret() {
   }
 }
 
-async function revoke(key: APIKey) {
-  if (!window.confirm(t('apiKeys.revokeConfirm'))) return
+const revokeOpen = ref(false)
+const revokeTarget = ref<APIKey | null>(null)
+
+function askRevoke(key: APIKey) {
+  revokeTarget.value = key
+  revokeOpen.value = true
+}
+
+async function revoke() {
+  const key = revokeTarget.value
+  revokeOpen.value = false
+  if (!key) return
   revoking.value = key.id
   try {
     await apiKeyApi.revoke(key.id)
@@ -238,7 +249,7 @@ onMounted(load)
                     class="size-8"
                     :disabled="revoking === item.id"
                     :aria-label="t('apiKeys.revoke')"
-                    @click="revoke(item)"
+                    @click="askRevoke(item)"
                   >
                     <Loader2 v-if="revoking === item.id" class="animate-spin" />
                     <Trash2 v-else class="text-destructive" />
@@ -359,5 +370,13 @@ onMounted(load)
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="revokeOpen"
+      :title="t('apiKeys.revoke')"
+      :description="t('apiKeys.revokeConfirm')"
+      :confirm-text="t('apiKeys.revoke')"
+      danger
+      @confirm="revoke"
+    />
   </div>
 </template>

@@ -4,12 +4,14 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
-import StateBadge from '@/components/app/StateBadge.vue'
-import { Badge } from '@/components/ui/badge'
+ import StateBadge from '@/components/app/StateBadge.vue'
+ import { Alert, AlertDescription } from '@/components/ui/alert'
+ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -67,10 +69,28 @@ async function load() {
   }
 }
 
+const renewOpen = ref(false)
+const renewMode = ref<'balance' | 'external'>('balance')
+const renewMessage = ref('')
+
+/** 续费先弹确认框：余额与在线支付共用，确认后再按模式执行。 */
+function askRenew(mode: 'balance' | 'external') {
+  if (!item.value) return
+  renewMode.value = mode
+  renewMessage.value = t('services.renewConfirm', {
+    price: priceLabel(item.value.price_cents, item.value.billing_cycle),
+  })
+  renewOpen.value = true
+}
+
+async function confirmRenew() {
+  renewOpen.value = false
+  if (renewMode.value === 'balance') await renewWithBalance()
+  else await renew()
+}
+
 async function renewWithBalance() {
   if (!item.value) return
-  const price = priceLabel(item.value.price_cents, item.value.billing_cycle)
-  if (!window.confirm(t('services.renewConfirm', { price }))) return
   balanceRenewing.value = true
   try {
     await serviceApi.renew(item.value.id)
@@ -89,8 +109,6 @@ async function renew() {
     toast.error(t('payment.methodRequired'))
     return
   }
-  const price = priceLabel(item.value.price_cents, item.value.billing_cycle)
-  if (!window.confirm(t('services.renewConfirm', { price }))) return
   renewing.value = true
   try {
     payment.value = await paymentApi.create('renewal', item.value.id, selectedMethod.value)
@@ -144,6 +162,19 @@ async function loadUpstream() {
 const poweringAction = ref<PowerAction | null>(null)
 const showUpstreamSSH = ref(false)
 
+/** NAT 机器的真实连接地址是被控公网 IP + 映射端口，不是内网 IPv4。 */
+const sshCommand = computed(() => {
+  const u = upstream.value
+  if (!u?.ssh_host || !u.ssh_port) return ''
+  return `ssh -p ${u.ssh_port} ${u.ssh_username || 'root'}@${u.ssh_host}`
+})
+
+const sshAddress = computed(() => {
+  const u = upstream.value
+  if (!u?.ssh_host || !u.ssh_port) return ''
+  return `${u.ssh_host}:${u.ssh_port}`
+})
+
 async function copyText(value: string) {
   try { await navigator.clipboard.writeText(value); toast.success('已复制') } catch { toast.error('复制失败，请手动复制') }
 }
@@ -189,13 +220,24 @@ async function openReinstall() {
   }
 }
 
-async function power(action: PowerAction) {
+const forceOpen = ref(false)
+const forceTarget = ref<PowerAction | null>(null)
+const forceMessage = ref('')
+
+async function power(action: PowerAction, confirmed = false) {
   if (!item.value || poweringAction.value) return
   if (action === 'reinstall') {
     await openReinstall()
     return
   }
-  if (action.startsWith('hard_') && !window.confirm(`确认执行「${powerActions.find((pa) => pa.action === action)?.label}」？强制操作可能丢失未保存数据。`)) return
+  if (action.startsWith('hard_') && !confirmed) {
+    forceTarget.value = action
+    forceMessage.value = t('services.powerForceConfirm', {
+      label: powerActions.find((pa) => pa.action === action)?.label ?? action,
+    })
+    forceOpen.value = true
+    return
+  }
   poweringAction.value = action
   try {
     await serviceApi.power(item.value.id, action)
@@ -207,14 +249,30 @@ async function power(action: PowerAction) {
   }
 }
 
-async function confirmReinstall() {
+const reinstallConfirmOpen = ref(false)
+
+async function confirmForcePower() {
+  const action = forceTarget.value
+  forceOpen.value = false
+  forceTarget.value = null
+  if (!action) return
+  await power(action, true)
+}
+
+/** 重装先收起系统选择框，确认框只聚焦“数据会被清空”这一件事；选中的系统保留在 selectedOs。 */
+function askReinstallConfirm() {
   if (!item.value) return
   if (osList.value.length && !selectedOs.value) {
     toast.error(t('services.selectOSHint'))
     return
   }
-  if (!window.confirm(t('services.powerReinstallConfirm'))) return
   reinstallOpen.value = false
+  reinstallConfirmOpen.value = true
+}
+
+async function confirmReinstall() {
+  if (!item.value) return
+  reinstallConfirmOpen.value = false
   poweringAction.value = 'reinstall'
   try {
     await serviceApi.power(item.value.id, 'reinstall', selectedOs.value || undefined)
@@ -226,6 +284,29 @@ async function confirmReinstall() {
   }
 }
 
+ /** 开通重试横幅：pending/failed 才出现，错误文案直接展示后端下发的 provision_error。 */
+ const showProvisionBanner = computed(
+   () => !!item.value && (item.value.status === 'pending' || item.value.status === 'failed'),
+ )
+ const retrying = ref(false)
+ const retryOpen = ref(false)
+ function askProvisionRetry() {
+   if (!item.value) return
+   retryOpen.value = true
+ }
+ async function confirmProvisionRetry() {
+   retryOpen.value = false
+   if (!item.value) return
+   retrying.value = true
+   try {
+     item.value = await serviceApi.retry(item.value.id)
+     toast.success(t('services.retried'))
+   } catch (err) {
+     toast.error(errorMessage(err))
+   } finally {
+     retrying.value = false
+   }
+ }
 onMounted(async () => {
   await load()
   await loadUpstream()
@@ -236,12 +317,12 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="item?.name ?? t('services.detailTit')">
       <template #actions>
-        <Button v-if="canRenew" size="sm" variant="outline" :disabled="balanceRenewing" @click="renewWithBalance">
+        <Button v-if="canRenew" size="sm" variant="outline" :disabled="balanceRenewing" @click="askRenew('balance')">
           <Loader2 v-if="balanceRenewing" class="animate-spin" />
           <RefreshCcw v-else />
           余额续费
         </Button>
-        <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length || isFree" :title="isFree ? '免费服务请使用余额续费' : ''" @click="renew">
+        <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length || isFree" :title="isFree ? '免费服务请使用余额续费' : ''" @click="askRenew('external')">
           <Loader2 v-if="renewing" class="animate-spin" />
           <RefreshCcw v-else />
           {{ t('services.renew') }}
@@ -258,6 +339,21 @@ onMounted(async () => {
     <ErrorAlert :message="error" />
     <LoadingBlock v-if="loading" :rows="3" />
 
+     <Alert v-if="item && showProvisionBanner" variant="warning">
+       <AlertDescription class="flex flex-wrap items-center gap-3">
+         <span class="min-w-48 flex-1">
+           {{ item.status === 'failed' ? t('services.failedHint') : t('services.pendingHint') }}
+           <span v-if="item.provision_error" class="mt-1 block text-xs break-all">
+             {{ t('services.provisionError') }}：{{ item.provision_error }}
+           </span>
+         </span>
+         <Button variant="outline" size="sm" :disabled="retrying" @click="askProvisionRetry">
+           <Loader2 v-if="retrying" class="animate-spin" />
+           <RotateCcw v-else />
+           {{ retrying ? t('services.retrying') : t('services.retryProvision') }}
+         </Button>
+       </AlertDescription>
+     </Alert>
     <div v-if="item && canRenew" class="space-y-3 rounded-lg border p-4">
       <div v-if="isFree" class="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">免费服务请使用“余额续费”</div>
       <template v-else>
@@ -327,9 +423,19 @@ onMounted(async () => {
           <div v-if="upstream?.memory_mb"><dt class="text-muted-foreground text-xs">内存</dt><dd>{{ upstream.memory_mb }} MB</dd></div>
           <div v-if="upstream?.disk_gb"><dt class="text-muted-foreground text-xs">硬盘</dt><dd>{{ upstream.disk_gb }} GB</dd></div>
           <div v-if="upstream?.bandwidth_mbps"><dt class="text-muted-foreground text-xs">带宽</dt><dd>{{ upstream.bandwidth_mbps }} Mbps</dd></div>
-          <div v-if="upstream?.ipv4"><dt class="text-muted-foreground text-xs">IPv4</dt><dd class="break-all">{{ upstream.ipv4 }}</dd></div>
+          <div v-if="upstream?.ipv4"><dt class="text-muted-foreground text-xs">IPv4（内网）</dt><dd class="break-all">{{ upstream.ipv4 }}</dd></div>
+          <div v-if="upstream?.ssh_host"><dt class="text-muted-foreground text-xs">SSH 主机</dt><dd class="break-all tabular">{{ upstream.ssh_host }}</dd></div>
           <div v-if="upstream?.ssh_port"><dt class="text-muted-foreground text-xs">SSH 端口</dt><dd class="tabular">{{ upstream.ssh_port }}</dd></div>
           <div v-if="upstream?.ssh_username"><dt class="text-muted-foreground text-xs">SSH 用户</dt><dd>{{ upstream.ssh_username }}</dd></div>
+          <div v-if="sshAddress" class="sm:col-span-2 lg:col-span-3">
+            <dt class="text-muted-foreground text-xs">连接地址（NAT 映射）</dt>
+            <dd class="mt-1 flex flex-wrap items-center gap-2">
+              <code class="bg-muted/40 rounded-md border px-3 py-1.5 text-sm tabular">{{ sshAddress }}</code>
+              <Button variant="outline" size="sm" @click="copyText(sshAddress)">复制地址</Button>
+              <code v-if="sshCommand" class="bg-muted/40 rounded-md border px-3 py-1.5 text-sm tabular">{{ sshCommand }}</code>
+              <Button v-if="sshCommand" variant="outline" size="sm" @click="copyText(sshCommand)">复制命令</Button>
+            </dd>
+          </div>
         </dl>
         <div v-if="upstream?.ssh_password" class="space-y-1.5">
           <div class="flex flex-wrap items-center gap-2">
@@ -370,13 +476,44 @@ onMounted(async () => {
         </div>
         <DialogFooter>
           <Button variant="outline" @click="reinstallOpen = false">{{ t('common.cancel') }}</Button>
-          <Button :disabled="poweringAction !== null" @click="confirmReinstall">
+          <Button :disabled="poweringAction !== null" @click="askReinstallConfirm">
             <Loader2 v-if="poweringAction === 'reinstall'" class="animate-spin" />
             {{ t('common.confirm') }}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="renewOpen"
+      :title="t('services.renew')"
+      :description="renewMessage"
+      :confirm-text="t('services.renew')"
+      @confirm="confirmRenew"
+    />
+    <ConfirmDialog
+      v-model:open="forceOpen"
+      :title="t('services.powerTitle')"
+      :description="forceMessage"
+      :confirm-text="t('common.confirm')"
+      danger
+      @confirm="confirmForcePower"
+    />
+    <ConfirmDialog
+      v-model:open="reinstallConfirmOpen"
+      :title="t('services.powerReinstall')"
+      :description="t('services.powerReinstallConfirm')"
+      :confirm-text="t('common.confirm')"
+      danger
+      @confirm="confirmReinstall"
+    />
+     <ConfirmDialog
+       v-model:open="retryOpen"
+       :title="t('services.retryProvision')"
+       :description="t('services.retryConfirm')"
+       :confirm-text="t('common.retry')"
+       :confirming="retrying"
+       @confirm="confirmProvisionRetry"
+     />
 
     <Card v-if="item">
       <CardContent>

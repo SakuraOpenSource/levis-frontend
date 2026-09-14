@@ -26,8 +26,8 @@ export const BILLING_CYCLES: BillingCycle[] = [
 ]
 
 export type OrderStatus = 'pending' | 'paid' | 'cancelled'
-export type ServiceStatus = 'pending' | 'active' | 'suspended' | 'terminated'
-export type InvoiceStatus = 'unpaid' | 'paid' | 'cancelled'
+/** failed/pending 为上游开通失败或待开通，可重试；suspended/terminated 只能由管理员变更。 */
+export type ServiceStatus = 'pending' | 'failed' | 'active' | 'suspended' | 'terminated'
 export type ProductStatus = 'active' | 'hidden'
 export type TransactionType = 'recharge' | 'payment' | 'refund' | 'adjust'
 export type DatabaseDriver = 'sqlite' | 'mysql' | 'postgres'
@@ -83,6 +83,8 @@ export interface Product extends Timestamps {
   /** 非零表示经「接口管理」的接口开通（Virtualis 等弹性/固定配置商品）。 */
   interface_id: number
   provision_config: ProvisionConfig | null
+  /** 指向知识库文章：非空表示购买该商品前必须阅读并同意该协议。 */
+  agreement_article_id: number | null
 }
 
 /** 一项规格的取值区间；固定配置时 min === max 且 step/unit_price_cents 为 0。 */
@@ -177,6 +179,8 @@ export interface Service extends Timestamps {
   expires_at: string | null
   upstream_plugin_id: string
   upstream_host_id: string
+  /** 最近一次上游开通失败的原因，成功后由后端清空；为空表示无失败。 */
+  provision_error: string
 }
 
 /** 电源操作动作：开机/关机/重启/重装系统。 */
@@ -198,6 +202,14 @@ export interface Invoice extends Timestamps {
   due_at: string | null
   paid_at: string | null
   items?: InvoiceItem[]
+}
+
+/**
+ * 管理端账单详情：账单字段（含明细）平铺，附带关联的外部支付。
+ * 对应后端 AdminInvoiceDetail：以账单为目标的支付 + 所属订单的支付。
+ */
+export interface AdminInvoiceDetail extends Invoice {
+  external_payments: ExternalPayment[]
 }
 
 export interface Transaction extends Timestamps {
@@ -593,6 +605,37 @@ export interface ProductInput {
   sort: number
   upstream_plugin_id: string
   upstream_product_id: string
+  interface_id?: number
+  provision_config?: ProvisionConfig | null
+  /** 璐拱鍗忚鏂囩珷 ID锛歯ull 琛ㄧず鏃犻渶鍚屾剰锛涘紩鐢ㄦ枃绔犲繀椤诲瓨鍦ㄣ€?*/
+  agreement_article_id?: number | null
+ }
+
+/** 璐﹀崟鐘舵€侊細寰呬粯/宸蹭粯/宸插彇娑堛€?*/
+export type InvoiceStatus = 'unpaid' | 'paid' | 'cancelled'
+
+export type ArticleStatus = 'draft' | 'published'
+
+export const ARTICLE_STATUSES: ArticleStatus[] = ['draft', 'published']
+
+/**
+ * 知识库文章，可被商品引用为购买协议。
+ * 公开接口只返回已发布的；草稿仅管理端可见。
+ */
+export interface Article extends Timestamps {
+  slug: string
+  title: string
+  content_md: string
+  status: ArticleStatus
+  sort_order: number
+}
+
+export interface ArticleInput {
+  slug: string
+  title: string
+  content_md: string
+  status: ArticleStatus
+  sort_order: number
 }
 
 export interface CreateUserInput {

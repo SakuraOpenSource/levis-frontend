@@ -141,3 +141,32 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* 知识库文章正文：renderMarkdown 输出的 .md-* 类在这里统一样式，
+   颜色全部取设计令牌，明暗主题自动跟随。 */
+.md-body {
+  @apply space-y-3 text-sm leading-7;
+}
+.md-body .md-h1 { @apply text-xl font-semibold; }
+.md-body .md-h2 { @apply text-lg font-semibold; }
+.md-body .md-h3 { @apply text-base font-semibold; }
+.md-body .md-h4,
+.md-body .md-h5,
+.md-body .md-h6 { @apply text-sm font-semibold; }
+.md-body .md-p { @apply break-words; }
+.md-body .md-link { @apply text-primary underline underline-offset-4; }
+.md-body .md-code {
+  @apply bg-muted rounded px-1.5 py-0.5 font-mono text-[0.8125rem];
+}
+.md-body .md-pre {
+  @apply bg-muted overflow-x-auto rounded-lg border p-3;
+}
+.md-body .md-pre code { @apply bg-transparent p-0 font-mono text-xs leading-6; }
+.md-body .md-list { @apply list-inside space-y-1 pl-1; }
+.md-body ul.md-list { @apply list-disc; }
+.md-body ol.md-list { @apply list-decimal; }
+.md-body .md-quote {
+  @apply text-muted-foreground border-l-2 pl-3;
+  border-color: var(--border);
+}
+.md-body .md-hr { border-color: var(--border); }

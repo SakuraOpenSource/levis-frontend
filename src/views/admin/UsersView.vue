@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Boxes, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
@@ -168,8 +169,18 @@ async function save() {
   }
 }
 
-async function remove(user: User) {
-  if (!window.confirm(t('admin.deleteUserConfirm', { name: user.username }))) return
+const confirmOpen = ref(false)
+const confirmTarget = ref<User | null>(null)
+
+function askRemove(user: User) {
+  confirmTarget.value = user
+  confirmOpen.value = true
+}
+
+async function remove() {
+  const user = confirmTarget.value
+  confirmOpen.value = false
+  if (!user) return
   deleting.value = user.id
   try {
     await adminApi.deleteUser(user.id)
@@ -267,7 +278,7 @@ onMounted(() => load())
                       class="size-8"
                       :disabled="item.id === auth.user?.id || deleting === item.id"
                       :aria-label="t('common.delete')"
-                      @click="remove(item)"
+                      @click="askRemove(item)"
                     >
                       <Loader2 v-if="deleting === item.id" class="animate-spin" />
                       <Trash2 v-else class="text-destructive" />
@@ -362,5 +373,13 @@ onMounted(() => load())
         </form>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="t('common.delete')"
+      :description="confirmTarget ? t('admin.deleteUserConfirm', { name: confirmTarget.username }) : ''"
+      :confirm-text="t('common.delete')"
+      danger
+      @confirm="remove"
+    />
   </div>
 </template>

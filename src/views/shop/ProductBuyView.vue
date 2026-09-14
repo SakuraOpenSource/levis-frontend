@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { Loader2, Minus, Plus } from 'lucide-vue-next'
+ import { computed, onMounted, reactive, ref } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { useRoute, useRouter } from 'vue-router'
+ import { Loader2, Minus, Plus } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -21,8 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { catalogApi, orderApi } from '@/lib/endpoints'
-import type { Product, ProvisionConfig } from '@/lib/types'
+import { articleApi, catalogApi, orderApi } from '@/lib/endpoints'
+ import type { Article, Product, ProvisionConfig } from '@/lib/types'
 
 /**
  * 接口商品购买页：弹性云在区间内自选规格，固定配置只展示；
@@ -33,13 +34,20 @@ import type { Product, ProvisionConfig } from '@/lib/types'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const { cycleLabel } = useCycleLabel()
+ const { t } = useI18n()
+ const { cycleLabel } = useCycleLabel()
 
-const product = ref<Product | null>(null)
-const loading = ref(true)
-const error = ref<string | null>(null)
-const submitting = ref(false)
-const formError = ref<string | null>(null)
+ const product = ref<Product | null>(null)
+ const loading = ref(true)
+ const error = ref<string | null>(null)
+ const submitting = ref(false)
+ const formError = ref<string | null>(null)
+ /** 购买协议：商品绑定 agreement_article_id 时必须勾选同意才能下单。 */
+ const agreed = ref(false)
+ const agreement = ref<Article | null>(null)
+ const agreementRequired = computed(() => product.value?.agreement_article_id != null)
+ const agreementTitle = computed(() => agreement.value?.title || t('agreement.fallbackTitle'))
+ const agreementSlug = computed(() => agreement.value?.slug ?? '')
 
 const images = ref<{ id: string; name: string; group: string }[]>([])
 const imagesLoading = ref(false)
@@ -127,6 +135,18 @@ const provisionExtraCents = computed(() => {
 const selectedUnitPriceCents = computed(() => (product.value?.price_cents ?? 0) + provisionExtraCents.value)
 const selectedTotalCents = computed(() => selectedUnitPriceCents.value * Math.max(quantity.value, 1))
 
+ /**
+  * 协议标题按需解析：公开文章接口只支持按 slug 读取，而商品只暴露数字 ID，
+  * 因此这里用管理端接口按 ID 读取标题与 slug；普通买家无管理权限时会失败，
+  * 此时静默回退为通用名称，购买 gating 不受影响。
+  */
+ async function loadAgreement(articleId: number) {
+   try {
+    agreement.value = await articleApi.getById(articleId)
+   } catch {
+     agreement.value = null
+   }
+ }
 async function loadImages() {
   imagesLoading.value = true
   imagesError.value = null
@@ -142,13 +162,17 @@ async function loadImages() {
   }
 }
 
-async function submit() {
-  formError.value = null
-  if (!cfg.value || !product.value) return
-  if (!selectedImage.value) {
-    formError.value = '请选择操作系统'
-    return
-  }
+ async function submit() {
+   formError.value = null
+   if (!cfg.value || !product.value) return
+   if (!selectedImage.value) {
+     formError.value = '请选择操作系统'
+     return
+   }
+   if (agreementRequired.value && !agreed.value) {
+     formError.value = t('agreement.agreeRequired')
+     return
+   }
   if (cfg.value.mode === 'elastic') {
     for (const field of FIELDS) {
       const range = cfg.value[field.key]
@@ -165,7 +189,8 @@ async function submit() {
     const order = await orderApi.buyNow({
       product_id: product.value.id,
       quantity: quantity.value,
-      billing_cycle: product.value.billing_cycle,
+       billing_cycle: product.value.billing_cycle,
+       agree: agreed.value,
       options: {
         driver: cfg.value.driver,
         cpu: String(picks.cpu),
@@ -195,7 +220,8 @@ onMounted(async () => {
       await router.replace({ name: 'shop' })
       return
     }
-    initPicks(item.provision_config)
+     initPicks(item.provision_config)
+     if (item.agreement_article_id != null) await loadAgreement(item.agreement_article_id)
     await loadImages()
   } catch (err) {
     error.value = errorMessage(err)
@@ -331,11 +357,38 @@ onMounted(async () => {
         </CardContent>
       </Card>
 
-      <ErrorAlert :message="formError" />
-      <Button class="w-full" size="lg" :disabled="submitting" @click="submit">
-        <Loader2 v-if="submitting" class="animate-spin" />
-        立即购买
-      </Button>
+       <div v-if="agreementRequired" class="flex items-start gap-2.5 rounded-lg border p-4">
+         <input
+           id="buy-agree"
+           v-model="agreed"
+           type="checkbox"
+           class="accent-primary mt-1 size-4 shrink-0 cursor-pointer"
+         />
+         <p class="text-sm leading-6">
+           <Label for="buy-agree" class="cursor-pointer font-normal">
+             {{ t('agreement.agree', { title: agreementTitle }) }}
+           </Label>
+           <RouterLink
+             v-if="agreementSlug"
+             :to="{ name: 'article-detail', params: { slug: agreementSlug } }"
+             target="_blank"
+             class="text-primary ml-2 text-xs whitespace-nowrap underline underline-offset-4"
+           >
+             {{ t('agreement.viewAgreement') }}
+           </RouterLink>
+         </p>
+       </div>
+       <ErrorAlert :message="formError" />
+       <Button
+         class="w-full"
+         size="lg"
+         :disabled="submitting || (agreementRequired && !agreed)"
+         :title="agreementRequired && !agreed ? t('agreement.agreeRequired') : undefined"
+         @click="submit"
+       >
+         <Loader2 v-if="submitting" class="animate-spin" />
+         立即购买
+       </Button>
     </template>
   </div>
 </template>

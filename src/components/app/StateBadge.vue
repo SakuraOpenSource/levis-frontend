@@ -15,6 +15,7 @@ const VARIANTS: Record<Kind, Record<string, BadgeVariants['variant']>> = {
   order: { pending: 'warning', paid: 'success', cancelled: 'secondary' },
   service: {
     pending: 'warning',
+    failed: 'destructive',
     active: 'success',
     suspended: 'destructive',
     terminated: 'secondary',

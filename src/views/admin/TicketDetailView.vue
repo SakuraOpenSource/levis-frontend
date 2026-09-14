@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Loader2, RotateCcw } from 'lucide-vue-next'
 
+import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import FilePicker from '@/components/app/FilePicker.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -74,8 +75,14 @@ async function submitReply() {
   }
 }
 
+const closeOpen = ref(false)
+
+function askClose() {
+  closeOpen.value = true
+}
+
 async function close() {
-  if (!window.confirm(t('tickets.closeConfirm'))) return
+  closeOpen.value = false
   acting.value = true
   try {
     await adminApi.closeTicket(id)
@@ -133,7 +140,7 @@ onMounted(load)
           variant="outline"
           size="sm"
           :disabled="acting"
-          @click="close"
+          @click="askClose"
         >
           <Loader2 v-if="acting" class="animate-spin" />
           {{ t('tickets.close') }}
@@ -202,5 +209,12 @@ onMounted(load)
         </CardContent>
       </Card>
     </template>
+    <ConfirmDialog
+      v-model:open="closeOpen"
+      :title="t('tickets.close')"
+      :description="t('tickets.closeConfirm')"
+      :confirm-text="t('tickets.close')"
+      @confirm="close"
+    />
   </div>
 </template>
