@@ -51,6 +51,7 @@ import type {
   PaymentMethodAdmin,
   PaymentPlugin,
   OSImage,
+  HostMetrics,
   UpstreamHost,
   UpstreamInterface,
 } from './types'
@@ -300,6 +301,11 @@ export const serviceApi = {
   },
   async upstream(id: number) {
     const { data } = await http.get<UpstreamHost>(`/services/${id}/upstream`)
+    return data
+  },
+  /** 实时监控：CPU/内存/带宽占用，上游不支持时抛错由调用方降级。 */
+  async metrics(id: number) {
+    const { data } = await http.get<HostMetrics>(`/services/${id}/metrics`)
     return data
   },
   async osList(id: number) {

@@ -28,8 +28,8 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { serviceApi, paymentApi } from '@/lib/endpoints'
-import { formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
-import type { ExternalPayment, OSImage, PaymentMethod, PowerAction, Service, UpstreamHost } from '@/lib/types'
+import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
+import type { ExternalPayment, HostMetrics, OSImage, PaymentMethod, PowerAction, Service, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -157,6 +157,35 @@ async function loadUpstream() {
   } finally {
     upstreamLoading.value = false
   }
+}
+
+const metrics = ref<HostMetrics | null>(null)
+const metricsLoading = ref(false)
+const metricsError = ref(false)
+
+/** 实时占用：上游不支持或查询失败时静默降级，只显示静态规格。 */
+async function loadMetrics() {
+  if (!item.value || !canPower.value) return
+  metricsLoading.value = true
+  metricsError.value = false
+  try {
+    metrics.value = await serviceApi.metrics(item.value.id)
+  } catch {
+    metrics.value = null
+    metricsError.value = true
+  } finally {
+    metricsLoading.value = false
+  }
+}
+
+const memPercent = computed(() => {
+  if (!metrics.value || metrics.value.memory_total_mb <= 0) return 0
+  return Math.min(100, Math.max(0, (metrics.value.memory_used_mb / metrics.value.memory_total_mb) * 100))
+})
+
+function formatRate(bps: number) {
+  if (!bps || bps <= 0) return '0 B/s'
+  return `${formatBytes(bps)}/s`
 }
 
 const poweringAction = ref<PowerAction | null>(null)
@@ -310,6 +339,7 @@ async function confirmReinstall() {
 onMounted(async () => {
   await load()
   await loadUpstream()
+  await loadMetrics()
 })
 </script>
 
@@ -445,6 +475,35 @@ onMounted(async () => {
             <Badge v-if="upstream?.ssh_ready" variant="outline">SSH 就绪</Badge>
           </div>
         </div>
+      </CardContent>
+    </Card>
+
+    <Card v-if="item && canPower">
+      <CardContent class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-medium">{{ t('services.liveMetrics') }}</h2>
+          <Button variant="outline" size="sm" :disabled="metricsLoading" @click="loadMetrics">
+            <Loader2 v-if="metricsLoading" class="animate-spin" />
+            <RefreshCcw v-else />
+            {{ t('services.metricsRefresh') }}
+          </Button>
+        </div>
+        <p class="text-muted-foreground text-xs">{{ t('services.metricsHint') }}</p>
+        <div v-if="metricsLoading && !metrics" class="text-muted-foreground flex items-center gap-2 text-sm">
+          <Loader2 class="animate-spin" />
+        </div>
+        <dl v-else-if="metrics" class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <div><dt class="text-muted-foreground text-xs">{{ t('services.cpuUsage') }}</dt><dd class="tabular">{{ metrics.cpu_percent.toFixed(1) }}%</dd></div>
+          <div>
+            <dt class="text-muted-foreground text-xs">{{ t('services.memUsage') }}</dt>
+            <dd class="tabular">{{ metrics.memory_used_mb }} / {{ metrics.memory_total_mb }} MB ({{ memPercent.toFixed(0) }}%)</dd>
+          </div>
+          <div><dt class="text-muted-foreground text-xs">{{ t('services.bandwidthDown') }}</dt><dd class="tabular">{{ formatRate(metrics.bandwidth_rx_bps) }}</dd></div>
+          <div><dt class="text-muted-foreground text-xs">{{ t('services.bandwidthUp') }}</dt><dd class="tabular">{{ formatRate(metrics.bandwidth_tx_bps) }}</dd></div>
+          <div><dt class="text-muted-foreground text-xs">{{ t('services.trafficDown') }}</dt><dd class="tabular">{{ formatBytes(metrics.network_rx_bytes) }}</dd></div>
+          <div><dt class="text-muted-foreground text-xs">{{ t('services.trafficUp') }}</dt><dd class="tabular">{{ formatBytes(metrics.network_tx_bytes) }}</dd></div>
+        </dl>
+        <p v-else-if="metricsError" class="text-muted-foreground text-xs">{{ t('services.metricsUnavailable') }}</p>
       </CardContent>
     </Card>
 

@@ -286,6 +286,18 @@ export interface UpstreamHost {
   ssh_ready?: boolean
 }
 
+/** 上游主机实时监控：CPU 占用、内存占用、上下行流量与速率。 */
+export interface HostMetrics {
+  cpu_percent: number
+  memory_used_mb: number
+  memory_total_mb: number
+  network_rx_bytes: number
+  network_tx_bytes: number
+  bandwidth_rx_bps: number
+  bandwidth_tx_bps: number
+  collected_at: string
+}
+
 export interface ExternalPayment extends Timestamps {
   plugin_id: string
   external_id: string
