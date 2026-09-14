@@ -23,6 +23,7 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { articleApi, catalogApi, orderApi } from '@/lib/endpoints'
+import { regionInfo } from '@/lib/regions'
  import type { Article, Product, ProvisionConfig } from '@/lib/types'
 
 /**
@@ -58,6 +59,8 @@ const quantity = ref(1)
 
 const cfg = computed<ProvisionConfig | null>(() => product.value?.provision_config ?? null)
 
+/** 地区徽标：未设置（''）时隐藏，台湾等特殊映射由 regions.ts 统一处理。 */
+const regionTag = computed(() => regionInfo(product.value?.region || ''))
 /** 选配编辑态：键与后端约定一致，值一律是数字（提交时转字符串）。 */
 const picks = reactive({
   cpu: 1,
@@ -234,6 +237,9 @@ onMounted(async () => {
 <template>
   <div class="mx-auto max-w-3xl space-y-6">
     <PageHeader :title="product?.name ?? '商品详情'" :description="product?.description || ''" />
+    <p v-if="regionTag.code" class="text-sm text-muted-foreground">
+      <span aria-hidden="true">{{ regionTag.flag }}</span> {{ regionTag.name }}
+    </p>
 
     <ErrorAlert :message="error" />
     <LoadingBlock v-if="loading" :rows="4" />

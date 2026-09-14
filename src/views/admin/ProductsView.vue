@@ -38,6 +38,7 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
+import { REGIONS, regionInfo } from '@/lib/regions'
  import {
    BILLING_CYCLES,
    type Article,
@@ -137,6 +138,7 @@ const deleting = ref<number | null>(null)
    upstreamProductId: '',
    interfaceId: '',
    agreementArticleId: '',
+   region: '',
  })
 
 /** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
@@ -221,6 +223,7 @@ function openCreate() {
      upstreamProductId: '',
      interfaceId: '',
      agreementArticleId: '',
+     region: '',
    })
   Object.assign(provision, emptyProvision())
   specs.value = []
@@ -243,6 +246,7 @@ function openEdit(item: Product) {
      upstreamProductId: item.upstream_product_id || '',
      interfaceId: item.interface_id ? String(item.interface_id) : '',
      agreementArticleId: item.agreement_article_id ? String(item.agreement_article_id) : '',
+     region: item.region || '',
    })
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
@@ -296,6 +300,7 @@ async function save() {
        interface_id: Number(form.interfaceId) || 0,
        provision_config: form.interfaceId ? buildProvisionConfig() : null,
        agreement_article_id: form.agreementArticleId ? Number(form.agreementArticleId) : null,
+       region: form.region,
      }
     if (editing.value) {
       await adminApi.updateProduct(editing.value.id, payload)
@@ -476,6 +481,7 @@ function pickInterface(interfaceId: string) {
                 <TableHead>{{ t('admin.productName') }}</TableHead>
                 <TableHead>{{ t('admin.productCategory') }}</TableHead>
                 <TableHead class="text-right">{{ t('admin.productPrice') }}</TableHead>
+                <TableHead>{{ t('admin.productRegion') }}</TableHead>
                 <TableHead>{{ t('admin.productCycle') }}</TableHead>
                 <TableHead class="text-right">{{ t('admin.productStock') }}</TableHead>
                 <TableHead>{{ t('admin.productStatus') }}</TableHead>
@@ -484,13 +490,16 @@ function pickInterface(interfaceId: string) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!items.length" :colspan="8">{{ t('common.empty') }}</TableEmpty>
+              <TableEmpty v-if="!items.length" :colspan="9">{{ t('common.empty') }}</TableEmpty>
               <TableRow v-for="item in items" v-else :key="item.id">
                 <TableCell class="font-medium">{{ item.name }}</TableCell>
                 <TableCell class="text-muted-foreground text-xs">
                   {{ categoryNames.get(item.category_id) ?? '-' }}
                 </TableCell>
                 <TableCell class="text-right"><Money :cents="item.price_cents" /></TableCell>
+                <TableCell class="whitespace-nowrap text-xs">
+                  <span v-if="item.region">{{ regionInfo(item.region).flag }} {{ regionInfo(item.region).name }}</span>
+                </TableCell>
                 <TableCell>{{ cycleLabel(item.billing_cycle) }}</TableCell>
                 <TableCell class="text-right tabular">
                   {{ item.stock < 0 ? t('common.unlimited') : item.stock }}
@@ -812,6 +821,21 @@ function pickInterface(interfaceId: string) {
               <Label for="p-sort">{{ t('admin.productSort') }}</Label>
               <Input id="p-sort" v-model="form.sort" type="number" />
               <p class="text-muted-foreground text-xs">{{ t('admin.categorySortHint') }}</p>
+            </div>
+            <div class="space-y-2">
+              <Label for="p-region">{{ t('admin.productRegion') }}</Label>
+              <Select v-model="form.region">
+                <SelectTrigger id="p-region">
+                  <SelectValue :placeholder="t('region.unset')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{{ t('region.unset') }}</SelectItem>
+                  <SelectItem v-for="option in REGIONS" :key="option.code" :value="option.code">
+                    {{ option.flag }} {{ option.name }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-muted-foreground text-xs">{{ t('admin.productRegionHint') }}</p>
             </div>
           </div>
 

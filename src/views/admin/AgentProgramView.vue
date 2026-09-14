@@ -9,6 +9,8 @@ import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -86,16 +88,32 @@ async function loadApplications() {
   } catch {}
 }
 
-async function review(row: ApplicationRow, approve: boolean) {
-  const remark = window.prompt(approve ? '通过备注（可留空）' : '拒绝原因（建议填写）', '') ?? ''
-  if (!approve && !remark.trim()) {
+const reviewOpen = ref(false)
+const reviewRow = ref<ApplicationRow | null>(null)
+const reviewApprove = ref(true)
+const reviewRemark = ref('')
+
+/** 审核先弹框填写备注：拒绝时必填原因，通过可留空。 */
+function askReview(row: ApplicationRow, approve: boolean) {
+  reviewRow.value = row
+  reviewApprove.value = approve
+  reviewRemark.value = ''
+  reviewOpen.value = true
+}
+
+async function confirmReview() {
+  const row = reviewRow.value
+  if (!row || reviewing.value !== null) return
+  const remark = reviewRemark.value.trim()
+  if (!reviewApprove.value && !remark) {
     toast.error('拒绝时请填写原因')
     return
   }
+  reviewOpen.value = false
   reviewing.value = row.id
   try {
-    await adminApi.reviewAgentApplication(row.id, { approve, review_remark: remark.trim() })
-    toast.success(approve ? '已通过，用户等级已绑定' : '已拒绝')
+    await adminApi.reviewAgentApplication(row.id, { approve: reviewApprove.value, review_remark: remark })
+    toast.success(reviewApprove.value ? '已通过，用户等级已绑定' : '已拒绝')
     await loadApplications()
   } catch (err) {
     toast.error(errorMessage(err))
@@ -295,8 +313,8 @@ onMounted(load)
               <p v-if="row.review_remark" class="text-muted-foreground text-xs">审核备注：{{ row.review_remark }}</p>
             </div>
             <div v-if="row.status === 'pending'" class="flex gap-2">
-              <Button size="sm" :disabled="reviewing === row.id" @click="review(row, true)">通过</Button>
-              <Button size="sm" variant="outline" :disabled="reviewing === row.id" @click="review(row, false)">拒绝</Button>
+              <Button size="sm" :disabled="reviewing === row.id" @click="askReview(row, true)">通过</Button>
+              <Button size="sm" variant="outline" :disabled="reviewing === row.id" @click="askReview(row, false)">拒绝</Button>
             </div>
           </div>
         </CardContent>
@@ -370,5 +388,19 @@ onMounted(load)
         </CardContent>
       </Card>
     </template>
+
+    <Dialog v-model:open="reviewOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ reviewApprove ? '通过申请' : '拒绝申请' }}</DialogTitle>
+          <DialogDescription>{{ reviewApprove ? '通过备注（可留空）' : '请填写拒绝原因' }}</DialogDescription>
+        </DialogHeader>
+        <Textarea v-model="reviewRemark" rows="3" :placeholder="reviewApprove ? '通过备注（可留空）' : '请填写拒绝原因'" />
+        <DialogFooter>
+          <Button variant="outline" @click="reviewOpen = false">取消</Button>
+          <Button :disabled="reviewing !== null" @click="confirmReview">{{ reviewApprove ? '通过' : '拒绝' }}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

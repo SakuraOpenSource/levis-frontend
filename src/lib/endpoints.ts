@@ -52,9 +52,10 @@ import type {
   PaymentPlugin,
   OSImage,
   HostMetrics,
+  HostVNC,
   UpstreamHost,
   UpstreamInterface,
-} from './types'
+ } from './types'
 interface PageQuery {
   page?: number
   page_size?: number
@@ -220,35 +221,40 @@ export const cartApi = {
   },
 }
 
-/** 外部支付。金额与目标由后端根据 purpose 校验并派生。 */
-export const paymentApi = {
-  async methods() {
-    const { data } = await http.get<{ items: PaymentMethod[] }>('/payments/methods')
-    return data.items ?? []
-  },
-  async create(
-    purpose: ExternalPayment['purpose'],
-    targetId: number,
-    pluginId: string,
-    amountCents?: number,
-  ) {
-    const { data } = await http.post<ExternalPayment>('/payments', {
-      purpose,
-      target_id: targetId,
-      plugin_id: pluginId,
-      ...(amountCents === undefined ? {} : { amount_cents: amountCents }),
-    })
-    return data
-  },
-  async get(id: number) {
-    const { data } = await http.get<ExternalPayment>(`/payments/${id}`)
-    return data
-  },
-  async query(id: number) {
-    const { data } = await http.post<ExternalPayment>(`/payments/${id}/query`)
-    return data
-  },
-}
+ /** 外部支付。order/invoice 用途的第 4 个参数是同步抵扣的余额（balance_cents）；recharge 用途则是充值金额（amount_cents，后端按 AmountCents 校验且拒绝余额抵扣）。 */
+ export const paymentApi = {
+   async methods() {
+     const { data } = await http.get<{ items: PaymentMethod[] }>('/payments/methods')
+     return data.items ?? []
+   },
+   async create(
+     purpose: ExternalPayment['purpose'],
+     targetId: number,
+     pluginId: string,
+     cents?: number,
+   ) {
+     const { data } = await http.post<ExternalPayment>('/payments', {
+       purpose,
+       target_id: targetId,
+       plugin_id: pluginId,
+       ...(cents === undefined ? {} : purpose === 'recharge' ? { amount_cents: cents } : { balance_cents: cents }),
+     })
+     return data
+   },
+   async get(id: number) {
+     const { data } = await http.get<ExternalPayment>(`/payments/${id}`)
+     return data
+   },
+   async query(id: number) {
+     const { data } = await http.post<ExternalPayment>(`/payments/${id}/query`)
+     return data
+   },
+   /** 取消待支付 intent：已抵扣余额退回，状态置为 failed。 */
+   async cancel(id: number) {
+     const { data } = await http.post<ExternalPayment>(`/payments/${id}/cancel`)
+     return data
+   },
+ }
 /** 订单与支付。agree 表示已阅读并同意商品绑定的购买协议。 */
 export const orderApi = {
   async create(agree = false) {
@@ -276,43 +282,53 @@ export const orderApi = {
   },
 }
 
-/** 已购服务。 */
-export const serviceApi = {
-  async list(query: PageQuery = {}) {
-    const { data } = await http.get<Page<Service>>('/services', { params: query })
-    return data
-  },
-  async get(id: number) {
-    const { data } = await http.get<Service>(`/services/${id}`)
-    return data
-  },
-  async renew(id: number) {
-    const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
-    return data
-  },
-  /** 重试上游开通：仅 pending/failed 状态可重试，成功后服务变为 active。 */
-  async retry(id: number) {
-    const { data } = await http.post<Service>(`/services/${id}/retry`)
-    return data
-  },
-  async power(id: number, action: PowerAction, os?: string) {
-    const { data } = await http.post<{ message: string }>(`/services/${id}/power`, { action, ...(os ? { os } : {}) })
-    return data
-  },
-  async upstream(id: number) {
-    const { data } = await http.get<UpstreamHost>(`/services/${id}/upstream`)
-    return data
-  },
-  /** 实时监控：CPU/内存/带宽占用，上游不支持时抛错由调用方降级。 */
-  async metrics(id: number) {
-    const { data } = await http.get<HostMetrics>(`/services/${id}/metrics`)
-    return data
-  },
-  async osList(id: number) {
-    const { data } = await http.get<{ items: OSImage[] }>(`/services/${id}/os`)
-    return data.items ?? []
-  },
-}
+ /** 已购服务。 */
+ export const serviceApi = {
+   async list(query: PageQuery = {}) {
+     const { data } = await http.get<Page<Service>>('/services', { params: query })
+     return data
+   },
+   async get(id: number) {
+     const { data } = await http.get<Service>(`/services/${id}`)
+     return data
+   },
+   async renew(id: number) {
+     const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
+     return data
+   },
+   /** 生成续费账单并跳转账单页支付（余额/在线统一走 PayPanel）。 */
+   async renewInvoice(id: number) {
+     const { data } = await http.post<Invoice>(`/services/${id}/renew-invoice`)
+     return data
+   },
+   /** 重试上游开通：仅 pending/failed 状态可重试，成功后服务变为 active。 */
+   async retry(id: number) {
+     const { data } = await http.post<Service>(`/services/${id}/retry`)
+     return data
+   },
+   async power(id: number, action: PowerAction, os?: string) {
+     const { data } = await http.post<{ message: string }>(`/services/${id}/power`, { action, ...(os ? { os } : {}) })
+     return data
+   },
+   async upstream(id: number) {
+     const { data } = await http.get<UpstreamHost>(`/services/${id}/upstream`)
+     return data
+   },
+   /** 实时监控：CPU/内存/带宽占用，上游不支持时抛错由调用方降级。 */
+   async metrics(id: number) {
+     const { data } = await http.get<HostMetrics>(`/services/${id}/metrics`)
+     return data
+   },
+   /** VNC 可用性：available 为 false 时看 message 原因，不直接暴露上游票据。 */
+   async vnc(id: number) {
+     const { data } = await http.get<HostVNC>(`/services/${id}/vnc`)
+     return data
+   },
+   async osList(id: number) {
+     const { data } = await http.get<{ items: OSImage[] }>(`/services/${id}/os`)
+     return data.items ?? []
+   },
+ }
 
 /** 钱包。 */
 export const walletApi = {
@@ -332,17 +348,22 @@ export const walletApi = {
   },
 }
 
-/** 账单。 */
-export const invoiceApi = {
-  async list(query: PageQuery = {}) {
-    const { data } = await http.get<Page<Invoice>>('/invoices', { params: query })
-    return data
-  },
-  async get(id: number) {
-    const { data } = await http.get<Invoice>(`/invoices/${id}`)
-    return data
-  },
-}
+ /** 账单。 */
+ export const invoiceApi = {
+   async list(query: PageQuery = {}) {
+     const { data } = await http.get<Page<Invoice>>('/invoices', { params: query })
+     return data
+   },
+   async get(id: number) {
+     const { data } = await http.get<Invoice>(`/invoices/${id}`)
+     return data
+   },
+   /** 全额余额结算：订单账单会触发开通，续费账单会延长到期。 */
+   async pay(id: number) {
+     const { data } = await http.post<Invoice>(`/invoices/${id}/pay`)
+     return data
+   },
+ }
 
 /** 工单。建单与回复都是 multipart，因此走 postForm。 */
 export const ticketApi = {
@@ -610,11 +631,11 @@ export const adminApi = {
     const { data } = await http.get<{ items: PaymentMethodAdmin[] }>('/admin/payment-methods')
     return data.items ?? []
   },
-  async createPaymentMethod(payload: { name: string; plugin_id: string; config: Record<string, string>; enabled?: boolean; sort_order?: number }) {
+  async createPaymentMethod(payload: { name: string; plugin_id: string; config: Record<string, string>; enabled?: boolean; sort_order?: number; icon?: string }) {
     const { data } = await http.post<PaymentMethodAdmin>('/admin/payment-methods', payload)
     return data
   },
-  async updatePaymentMethod(id: number, payload: { name?: string; plugin_id?: string; config?: Record<string, string>; enabled?: boolean; sort_order?: number }) {
+  async updatePaymentMethod(id: number, payload: { name?: string; plugin_id?: string; config?: Record<string, string>; enabled?: boolean; sort_order?: number; icon?: string }) {
     const { data } = await http.patch<PaymentMethodAdmin>(`/admin/payment-methods/${id}`, payload)
     return data
   },

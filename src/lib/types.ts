@@ -66,26 +66,28 @@ export interface Spec {
   value: string
 }
 
-export interface Product extends Timestamps {
-  category_id: number
-  name: string
-  description: string
-  /** 后端可能返回 null（历史数据或空列表）。 */
-  specs: Spec[] | null
-  price_cents: number
-  billing_cycle: BillingCycle
-  /** 负数表示库存不限。 */
-  stock: number
-  status: ProductStatus
-  sort: number
-  upstream_plugin_id: string
-  upstream_product_id: string
-  /** 非零表示经「接口管理」的接口开通（Virtualis 等弹性/固定配置商品）。 */
-  interface_id: number
-  provision_config: ProvisionConfig | null
-  /** 指向知识库文章：非空表示购买该商品前必须阅读并同意该协议。 */
-  agreement_article_id: number | null
-}
+ export interface Product extends Timestamps {
+   category_id: number
+   name: string
+   description: string
+   /** 后端可能返回 null（历史数据或空列表）。 */
+   specs: Spec[] | null
+   price_cents: number
+   billing_cycle: BillingCycle
+   /** 负数表示库存不限。 */
+   stock: number
+   status: ProductStatus
+   sort: number
+   upstream_plugin_id: string
+   upstream_product_id: string
+   /** 非零表示经「接口管理」的接口开通（Virtualis 等弹性/固定配置商品）。 */
+   interface_id: number
+   provision_config: ProvisionConfig | null
+   /** 指向知识库文章：非空表示购买该商品前必须阅读并同意该协议。 */
+   agreement_article_id: number | null
+   /** 地区代码，'' 表示未设置，展示时经 regionInfo 解析。 */
+   region: string
+ }
 
 /** 一项规格的取值区间；固定配置时 min === max 且 step/unit_price_cents 为 0。 */
 export interface SpecRange {
@@ -238,19 +240,22 @@ export interface PayResult {
 
 export type ExternalPaymentPurpose = 'recharge' | 'order' | 'invoice' | 'renewal'
 export type ExternalPaymentStatus = 'pending' | 'paid' | 'failed'
-
 export interface PaymentMethod {
-  id: string
-  name: string
-}
+   id: string
+   name: string
+   /** 图标 key（alipay/wechat/…），'' 表示无图标，前端回落默认图标。 */
+   icon: string
+ }
 
-export interface PaymentMethodAdmin extends Timestamps {
-  name: string
-  plugin_id: string
-  config: Record<string, string>
-  enabled: boolean
-  sort_order: number
-}
+ export interface PaymentMethodAdmin extends Timestamps {
+   name: string
+   plugin_id: string
+   config: Record<string, string>
+   enabled: boolean
+   sort_order: number
+   /** 图标 key，与 PaymentMethod.icon 同一取值表。 */
+   icon: string
+ }
 
 export interface PaymentPlugin {
   id: string
@@ -286,35 +291,43 @@ export interface UpstreamHost {
   ssh_ready?: boolean
 }
 
-/** 上游主机实时监控：CPU 占用、内存占用、上下行流量与速率。 */
-export interface HostMetrics {
-  cpu_percent: number
-  memory_used_mb: number
-  memory_total_mb: number
-  network_rx_bytes: number
-  network_tx_bytes: number
-  bandwidth_rx_bps: number
-  bandwidth_tx_bps: number
-  collected_at: string
-}
+ /** 上游主机实时监控：CPU 占用、内存占用、上下行流量与速率。 */
+ export interface HostMetrics {
+   cpu_percent: number
+   memory_used_mb: number
+   memory_total_mb: number
+   network_rx_bytes: number
+   network_tx_bytes: number
+   bandwidth_rx_bps: number
+   bandwidth_tx_bps: number
+   collected_at: string
+ }
 
-export interface ExternalPayment extends Timestamps {
-  plugin_id: string
-  external_id: string
-  user_id: number
-  purpose: ExternalPaymentPurpose
-  target_id: number
-  amount_cents: number
-  currency: string
-  subject: string
-  return_url: string
-  pay_url: string
-  gateway_ref: string
-  paid_amount_cents: number
-  status: ExternalPaymentStatus
-  failure_reason: string
-  paid_at: string | null
-}
+ export interface ExternalPayment extends Timestamps {
+   plugin_id: string
+   external_id: string
+   user_id: number
+   purpose: ExternalPaymentPurpose
+   target_id: number
+   amount_cents: number
+   currency: string
+   subject: string
+   return_url: string
+   pay_url: string
+   gateway_ref: string
+   paid_amount_cents: number
+   status: ExternalPaymentStatus
+   failure_reason: string
+   paid_at: string | null
+   /** 本次已抵扣的余额（分），后端随 intent 下发。 */
+   balance_cents: number
+ }
+
+ /** 服务 VNC 可用性：不可用时 message 说明原因。 */
+ export interface HostVNC {
+   available: boolean
+   message: string
+ }
 
 export interface RenewResult {
   service: Service
@@ -619,8 +632,10 @@ export interface ProductInput {
   upstream_product_id: string
   interface_id?: number
   provision_config?: ProvisionConfig | null
-  /** 璐拱鍗忚鏂囩珷 ID锛歯ull 琛ㄧず鏃犻渶鍚屾剰锛涘紩鐢ㄦ枃绔犲繀椤诲瓨鍦ㄣ€?*/
-  agreement_article_id?: number | null
+   /** 璐拱鍗忚鏂囩珷 ID锛歯ull 琛ㄧず鏃犻渶鍚屾剰锛涘紩鐢ㄦ枃绔犲繀椤诲瓨鍦ㄣ€?*/
+   agreement_article_id?: number | null
+   /** 地区代码，'' 表示未设置。 */
+   region?: string
  }
 
 /** 璐﹀崟鐘舵€侊細寰呬粯/宸蹭粯/宸插彇娑堛€?*/

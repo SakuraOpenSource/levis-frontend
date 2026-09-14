@@ -2,22 +2,22 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { CheckCircle2, ExternalLink, Info, Loader2, RefreshCcw } from 'lucide-vue-next'
+import { CheckCircle2, Loader2 } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
+import PayPanel from '@/components/app/PayPanel.vue'
 import StateBadge from '@/components/app/StateBadge.vue'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { orderApi, paymentApi, walletApi } from '@/lib/endpoints'
-import type { ExternalPayment, Order, PaymentMethod } from '@/lib/types'
+import { orderApi, walletApi } from '@/lib/endpoints'
+import type { Order } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -31,67 +31,18 @@ const order = ref<Order | null>(null)
 const balanceCents = ref(0)
 const loading = ref(true)
 const error = ref<string | null>(null)
-const paying = ref(false)
 const cancelling = ref(false)
-const methods = ref<PaymentMethod[]>([])
-const selectedMethod = ref('')
-const payment = ref<ExternalPayment | null>(null)
-const querying = ref(false)
 
 const orderId = computed(() => Number(route.params.id))
-const insufficient = computed(
-  () => !!order.value && balanceCents.value < order.value.total_cents,
-)
 const payable = computed(() => order.value?.status === 'pending')
 
 async function loadAll() {
-  const [fetched, wallet, availableMethods] = await Promise.all([
+  const [fetched, wallet] = await Promise.all([
     orderApi.get(orderId.value),
     walletApi.overview(),
-    paymentApi.methods(),
   ])
   order.value = fetched
   balanceCents.value = wallet.balance_cents
-  methods.value = availableMethods
-  selectedMethod.value = availableMethods[0]?.id ?? ''
-}
-
-function openPayment() {
-  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
-}
-
-async function pay() {
-  if (!order.value) return
-  if (!selectedMethod.value) {
-    toast.error(t('payment.methodRequired'))
-    return
-  }
-  paying.value = true
-  error.value = null
-  try {
-    payment.value = await paymentApi.create('order', order.value.id, selectedMethod.value)
-    openPayment()
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    paying.value = false
-  }
-}
-
-async function queryPayment() {
-  if (!payment.value) return
-  querying.value = true
-  try {
-    payment.value = await paymentApi.query(payment.value.id)
-    if (payment.value.status === 'paid') {
-      await Promise.all([auth.refresh(), loadAll()])
-      toast.success(t('payment.paid'))
-    }
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    querying.value = false
-  }
 }
 
 async function cancel() {
@@ -108,21 +59,10 @@ async function cancel() {
   }
 }
 
-/** 用余额直接支付订单，无需外部支付渠道。 */
-const payingBalance = ref(false)
-async function payWithBalance() {
-  if (!order.value) return
-  payingBalance.value = true
-  error.value = null
-  try {
-    await orderApi.pay(order.value.id)
-    await Promise.all([auth.refresh(), loadAll()])
-    toast.success(t('checkout.success'))
-  } catch (err) {
-    error.value = errorMessage(err)
-  } finally {
-    payingBalance.value = false
-  }
+/** PayPanel 结算完成后刷新订单与余额，成功卡片由 order.status 驱动保留。 */
+async function onPaid() {
+  await Promise.all([auth.refresh(), loadAll()])
+  toast.success(t('checkout.success'))
 }
 
 onMounted(async () => {
@@ -149,8 +89,8 @@ onMounted(async () => {
     <LoadingBlock v-if="loading" :rows="3" />
 
     <template v-else-if="order">
-      <!-- 支付成功：外部支付回调成功，或余额支付后订单已变为已付 -->
-      <Card v-if="payment?.status === 'paid' || order.status === 'paid'">
+      <!-- 支付成功：余额或外部渠道结算后订单已变为已付 -->
+      <Card v-if="order.status === 'paid'">
         <CardContent class="flex flex-col items-center gap-4 py-10 text-center">
           <CheckCircle2 class="text-success size-12" />
           <div class="space-y-1">
@@ -171,11 +111,6 @@ onMounted(async () => {
       </Card>
 
       <template v-else>
-        <Alert v-if="!methods.length" variant="warning">
-          <Info />
-          <AlertDescription>{{ t('payment.unavailable') }}</AlertDescription>
-        </Alert>
-
         <Card>
           <CardHeader>
             <CardTitle class="flex items-center justify-between gap-2 text-base">
@@ -212,77 +147,21 @@ onMounted(async () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle class="text-base">{{ t('checkout.payMethod') }}</CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <div class="space-y-2">
-              <label for="checkout-payment-method" class="text-sm font-medium">{{ t('payment.method') }}</label>
-              <select id="checkout-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || paying">
-                <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
-                <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
-              </select>
-            </div>
-            <div class="flex items-center justify-between rounded-lg border p-3">
-              <span class="text-sm font-medium">{{ t('checkout.balanceAvailable') }}</span>
-              <Money :cents="balanceCents" class="font-medium" />
-            </div>
+        <PayPanel
+          v-if="payable"
+          :total-cents="order.total_cents"
+          :balance-cents="balanceCents"
+          purpose="order"
+          :target-id="order.id"
+          @paid="onPaid"
+        />
 
-            <Alert v-if="insufficient && payable" variant="warning">
-              <Info />
-              <AlertDescription class="flex flex-wrap items-center gap-3">
-                {{ t('checkout.insufficient') }}
-                <Button variant="outline" size="sm" as-child>
-                  <RouterLink :to="{ name: 'wallet' }">{{ t('checkout.goRecharge') }}</RouterLink>
-                </Button>
-              </AlertDescription>
-            </Alert>
-
-            <div v-if="payment" class="space-y-3 rounded-lg border p-3 text-sm">
-              <div class="flex items-center justify-between gap-3">
-                <span>{{ t('payment.status') }}</span>
-                <span :class="payment.status === 'failed' ? 'text-destructive' : 'font-medium'">{{ t(`payment.${payment.status}`) }}</span>
-              </div>
-              <p v-if="payment.status === 'failed'" class="text-destructive text-xs">{{ payment.failure_reason || t('payment.failed') }}</p>
-              <div v-if="payment.status === 'pending'" class="flex flex-wrap gap-2">
-                <Button v-if="payment.pay_url" variant="outline" size="sm" @click="openPayment">
-                  <ExternalLink />
-                  {{ t('payment.open') }}
-                </Button>
-                <Button variant="outline" size="sm" :disabled="querying" @click="queryPayment">
-                  <RefreshCcw :class="querying ? 'animate-spin' : ''" />
-                  {{ querying ? t('payment.querying') : t('payment.query') }}
-                </Button>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap justify-end gap-3">
-              <Button
-                v-if="payable"
-                variant="ghost"
-                :disabled="cancelling || paying || payingBalance"
-                @click="cancel"
-              >
-                <Loader2 v-if="cancelling" class="animate-spin" />
-                {{ t('checkout.cancelOrder') }}
-              </Button>
-              <Button
-                v-if="payable"
-                variant="outline"
-                :disabled="insufficient || paying || payingBalance"
-                @click="payWithBalance"
-              >
-                <Loader2 v-if="payingBalance" class="animate-spin" />
-                {{ t('checkout.balance') }}
-              </Button>
-              <Button :disabled="!payable || !methods.length || paying || payingBalance" @click="pay">
-                <Loader2 v-if="paying" class="animate-spin" />
-                {{ paying ? t('checkout.paying') : t('checkout.pay') }}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div v-if="payable" class="flex flex-wrap justify-end gap-3">
+          <Button variant="ghost" :disabled="cancelling" @click="cancel">
+            <Loader2 v-if="cancelling" class="animate-spin" />
+            {{ t('checkout.cancelOrder') }}
+          </Button>
+        </div>
       </template>
     </template>
   </div>

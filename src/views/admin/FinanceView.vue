@@ -9,6 +9,7 @@ import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
 import Pager from '@/components/app/Pager.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
+import PayIcon, { PAYMENT_ICONS } from '@/components/app/PayIcon.vue'
 import StateBadge from '@/components/app/StateBadge.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,10 +61,10 @@ const dialogOpen = ref(false)
 const editing = ref<PaymentMethodAdmin | null>(null)
 const saving = ref(false)
 const formError = ref<string | null>(null)
-
 const form = reactive({
   name: '',
   plugin_id: '',
+  icon: '',
   enabled: true,
   sort_order: 0,
   config: {} as Record<string, string>,
@@ -101,6 +102,7 @@ function openCreate() {
   formError.value = null
   form.name = ''
   form.plugin_id = plugins.value[0]?.id ?? ''
+  form.icon = ''
   form.enabled = true
   form.sort_order = 0
   form.config = {}
@@ -117,6 +119,7 @@ function openEdit(item: PaymentMethodAdmin) {
   formError.value = null
   form.name = item.name
   form.plugin_id = item.plugin_id
+  form.icon = item.icon ?? ''
   form.enabled = item.enabled
   form.sort_order = item.sort_order
   // 克隆配置，未覆盖的字段补默认值
@@ -154,6 +157,7 @@ async function save() {
     const payload = {
       name: form.name.trim(),
       plugin_id: form.plugin_id,
+      icon: form.icon,
       config: { ...form.config },
       enabled: form.enabled,
       sort_order: Number(form.sort_order) || 0,
@@ -287,6 +291,7 @@ onMounted(() => {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>{{ t('admin.paymentMethodName') }}</TableHead>
+                <TableHead>{{ t('admin.paymentIcon') }}</TableHead>
                 <TableHead>{{ t('admin.paymentPlugin') }}</TableHead>
                 <TableHead>回调地址</TableHead>
                 <TableHead>{{ t('admin.paymentMethodSort') }}</TableHead>
@@ -295,10 +300,11 @@ onMounted(() => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!methods.length" :colspan="7">{{ t('admin.noPaymentMethods') }}</TableEmpty>
+              <TableEmpty v-if="!methods.length" :colspan="8">{{ t('admin.noPaymentMethods') }}</TableEmpty>
               <TableRow v-for="item in methods" v-else :key="item.id">
                 <TableCell class="font-mono text-xs">{{ item.id }}</TableCell>
                 <TableCell class="font-medium">{{ item.name }}</TableCell>
+                <TableCell><PayIcon :icon="item.icon" class="size-5" /></TableCell>
                 <TableCell>{{ pluginName(item.plugin_id) }}</TableCell>
                 <TableCell class="max-w-[260px] truncate font-mono text-xs" :title="`/api/plugin/v1/payment-notify/${item.plugin_id}/${item.id}`">
                   /api/plugin/v1/payment-notify/{{ item.plugin_id }}/{{ item.id }}
@@ -455,6 +461,23 @@ onMounted(() => {
           <div class="space-y-2">
             <Label>{{ t('admin.paymentMethodSort') }}</Label>
             <Input v-model.number="form.sort_order" type="number" />
+          </div>
+          <div class="space-y-2">
+            <Label>{{ t('admin.paymentIcon') }}</Label>
+            <div class="flex items-center gap-3">
+              <PayIcon :icon="form.icon" class="size-8" />
+              <Select :model-value="form.icon" @update:model-value="(v: any) => (form.icon = String(v ?? ''))">
+                <SelectTrigger class="flex-1">
+                  <SelectValue :placeholder="t('admin.paymentIconHint')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="option in PAYMENT_ICONS" :key="option.key" :value="option.key">
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p class="text-muted-foreground text-xs">{{ t('admin.paymentIconHint') }}</p>
           </div>
 
           <div v-if="selectedFields.length" class="space-y-4 rounded-lg border p-4">

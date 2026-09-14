@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
+import { ArrowLeft, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
+import RFB from '@novnc/novnc'
 
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
+import PayPanel from '@/components/app/PayPanel.vue'
  import StateBadge from '@/components/app/StateBadge.vue'
  import { Alert, AlertDescription } from '@/components/ui/alert'
  import { Badge } from '@/components/ui/badge'
@@ -27,23 +29,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { serviceApi, paymentApi } from '@/lib/endpoints'
+import { serviceApi, walletApi } from '@/lib/endpoints'
 import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
-import type { ExternalPayment, HostMetrics, OSImage, PaymentMethod, PowerAction, Service, UpstreamHost } from '@/lib/types'
+import type { HostMetrics, Invoice, OSImage, PowerAction, Service, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
 const toast = useToast()
-const { cycleLabel, priceLabel } = useCycleLabel()
+const { cycleLabel } = useCycleLabel()
 
 const item = ref<Service | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
-const renewing = ref(false)
-const methods = ref<PaymentMethod[]>([])
-const selectedMethod = ref('')
-const payment = ref<ExternalPayment | null>(null)
-const querying = ref(false)
+/** 续费账单：创建成功后挂载 PayPanel（purpose="invoice"）统一收银，结算完成即清空。 */
+const renewInvoice = ref<Invoice | null>(null)
+const creatingRenew = ref(false)
+const walletBalance = ref(0)
 
 const canRenew = computed(
   () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
@@ -51,17 +52,14 @@ const canRenew = computed(
 
 const isFree = computed(() => item.value?.price_cents === 0)
 
-const balanceRenewing = ref(false)
-
 async function load() {
   try {
-    const [service, availableMethods] = await Promise.all([
+    const [service, wallet] = await Promise.all([
       serviceApi.get(Number(route.params.id)),
-      paymentApi.methods().catch(() => [] as PaymentMethod[]),
+      walletApi.overview().catch(() => null),
     ])
     item.value = service
-    methods.value = availableMethods
-    selectedMethod.value = availableMethods[0]?.id ?? ''
+    walletBalance.value = wallet?.balance_cents ?? 0
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -69,74 +67,33 @@ async function load() {
   }
 }
 
-const renewOpen = ref(false)
-const renewMode = ref<'balance' | 'external'>('balance')
-const renewMessage = ref('')
-
-/** 续费先弹确认框：余额与在线支付共用，确认后再按模式执行。 */
-function askRenew(mode: 'balance' | 'external') {
-  if (!item.value) return
-  renewMode.value = mode
-  renewMessage.value = t('services.renewConfirm', {
-    price: priceLabel(item.value.price_cents, item.value.billing_cycle),
-  })
-  renewOpen.value = true
-}
-
-async function confirmRenew() {
-  renewOpen.value = false
-  if (renewMode.value === 'balance') await renewWithBalance()
-  else await renew()
-}
-
-async function renewWithBalance() {
-  if (!item.value) return
-  balanceRenewing.value = true
+/** 续费走统一收银台：先生成续费账单，再用 PayPanel（余额抵扣 + 在线支付）结算。 */
+async function startRenew() {
+  if (!item.value || creatingRenew.value || renewInvoice.value) return
+  creatingRenew.value = true
   try {
-    await serviceApi.renew(item.value.id)
-    item.value = await serviceApi.get(Number(route.params.id))
+    renewInvoice.value = await serviceApi.renewInvoice(item.value.id)
+    toast.success(t('services.renewInvoiceDone'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    creatingRenew.value = false
+  }
+}
+
+/** PayPanel 结算完成后重载服务与钱包（未付账单计数即账单状态），收起收银台。 */
+async function onRenewPaid() {
+  renewInvoice.value = null
+  try {
+    const [service, wallet] = await Promise.all([
+      serviceApi.get(Number(route.params.id)),
+      walletApi.overview(),
+    ])
+    item.value = service
+    walletBalance.value = wallet.balance_cents
     toast.success(t('services.renewed'))
   } catch (err) {
     toast.error(errorMessage(err))
-  } finally {
-    balanceRenewing.value = false
-  }
-}
-
-async function renew() {
-  if (!item.value) return
-  if (!selectedMethod.value) {
-    toast.error(t('payment.methodRequired'))
-    return
-  }
-  renewing.value = true
-  try {
-    payment.value = await paymentApi.create('renewal', item.value.id, selectedMethod.value)
-    if (payment.value.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
-  } catch (err) {
-    toast.error(errorMessage(err))
-  } finally {
-    renewing.value = false
-  }
-}
-
-function openPayment() {
-  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
-}
-
-async function queryPayment() {
-  if (!payment.value) return
-  querying.value = true
-  try {
-    payment.value = await paymentApi.query(payment.value.id)
-    if (payment.value.status === 'paid') {
-      item.value = await serviceApi.get(Number(route.params.id))
-      toast.success(t('services.renewed'))
-    }
-  } catch (err) {
-    toast.error(errorMessage(err))
-  } finally {
-    querying.value = false
   }
 }
 
@@ -162,19 +119,54 @@ async function loadUpstream() {
 const metrics = ref<HostMetrics | null>(null)
 const metricsLoading = ref(false)
 const metricsError = ref(false)
+/** 近 30 次采样环形缓冲，支撑图表卡片的 SVG 迷你折线。 */
+const metricHistory = ref<{ cpu: number; mem: number; rx: number; tx: number }[]>([])
+let metricsTimer: number | null = null
 
-/** 实时占用：上游不支持或查询失败时静默降级，只显示静态规格。 */
-async function loadMetrics() {
+function stopMetricsTimer() {
+  if (metricsTimer !== null) {
+    window.clearInterval(metricsTimer)
+    metricsTimer = null
+  }
+}
+
+function startMetricsTimer() {
+  stopMetricsTimer()
+  metricsTimer = window.setInterval(() => {
+    void loadMetrics(true)
+  }, 10000)
+}
+
+function pushMetricSample() {
+  if (!metrics.value) return
+  metricHistory.value = [
+    ...metricHistory.value.slice(-29),
+    {
+      cpu: metrics.value.cpu_percent,
+      mem: memPercent.value,
+      rx: metrics.value.bandwidth_rx_bps,
+      tx: metrics.value.bandwidth_tx_bps,
+    },
+  ]
+}
+
+/** 实时占用：上游不支持或查询失败时静默降级，只显示静态规格。quiet 轮询失败时保留上次数据。 */
+async function loadMetrics(quiet = false) {
   if (!item.value || !canPower.value) return
-  metricsLoading.value = true
-  metricsError.value = false
+  if (!quiet) {
+    metricsLoading.value = true
+    metricsError.value = false
+  }
   try {
     metrics.value = await serviceApi.metrics(item.value.id)
+    pushMetricSample()
   } catch {
-    metrics.value = null
-    metricsError.value = true
+    if (!quiet) {
+      metrics.value = null
+      metricsError.value = true
+    }
   } finally {
-    metricsLoading.value = false
+    if (!quiet) metricsLoading.value = false
   }
 }
 
@@ -186,6 +178,143 @@ const memPercent = computed(() => {
 function formatRate(bps: number) {
   if (!bps || bps <= 0) return '0 B/s'
   return `${formatBytes(bps)}/s`
+}
+
+/** 迷你折线：按峰值归一化到 120x36 画布，无数据时返回空路径。 */
+function sparkPoints(values: number[]): string {
+  if (!values.length) return ''
+  const peak = Math.max(...values, 1)
+  const step = values.length > 1 ? 120 / (values.length - 1) : 0
+  return values
+    .map((value, index) => `${(index * step).toFixed(1)},${(34 - (value / peak) * 30).toFixed(1)}`)
+    .join(' ')
+}
+
+const chartSeries = computed(() => {
+  if (!metricHistory.value.length) return []
+  return [
+    {
+      key: 'cpu',
+      label: t('services.chartCpu'),
+      values: metricHistory.value.map((sample) => sample.cpu),
+      current: metrics.value ? `${metrics.value.cpu_percent.toFixed(1)}%` : '-',
+    },
+    {
+      key: 'mem',
+      label: t('services.chartMem'),
+      values: metricHistory.value.map((sample) => sample.mem),
+      current: `${memPercent.value.toFixed(0)}%`,
+    },
+    {
+      key: 'down',
+      label: t('services.chartDown'),
+      values: metricHistory.value.map((sample) => sample.rx),
+      current: formatRate(metrics.value?.bandwidth_rx_bps ?? 0),
+    },
+    {
+      key: 'up',
+      label: t('services.chartUp'),
+      values: metricHistory.value.map((sample) => sample.tx),
+      current: formatRate(metrics.value?.bandwidth_tx_bps ?? 0),
+    },
+  ]
+})
+
+const vncTarget = ref<HTMLElement | null>(null)
+const vncAvailable = ref(false)
+const vncMessage = ref('')
+const vncChecking = ref(false)
+const vncConnecting = ref(false)
+const vncConnected = ref(false)
+const vncEverConnected = ref(false)
+
+let rfb: RFB | null = null
+let vncManualClose = false
+
+/** VNC 可用性门禁：上游未提供控制台时只展示原因，不建连接。 */
+async function checkVnc() {
+  if (!item.value || !canPower.value) return
+  vncChecking.value = true
+  try {
+    const info = await serviceApi.vnc(item.value.id)
+    vncAvailable.value = info.available
+    vncMessage.value = info.message || ''
+  } catch {
+    vncAvailable.value = false
+    vncMessage.value = ''
+  } finally {
+    vncChecking.value = false
+  }
+}
+
+function onVncConnect() {
+  vncConnected.value = true
+  vncEverConnected.value = true
+  vncConnecting.value = false
+  toast.success(t('services.vncConnected'))
+}
+
+function onVncDisconnect(e: Event) {
+  vncConnected.value = false
+  vncConnecting.value = false
+  if (vncManualClose) {
+    vncManualClose = false
+    return
+  }
+  const detail = (e as CustomEvent).detail ?? {}
+  toast.error(detail.clean ? t('services.vncDisconnected') : t('services.vncUnexpected'))
+}
+
+/** 静默拆除当前 VNC 会话：复用于重连、切换服务与卸载，不弹 toast。 */
+function teardownVnc() {
+  if (rfb) {
+    try {
+      rfb.removeEventListener('connect', onVncConnect)
+      rfb.removeEventListener('disconnect', onVncDisconnect)
+    } catch {
+      // 旧会话解绑失败可忽略。
+    }
+    try {
+      rfb.disconnect()
+    } catch {
+      // 关闭阶段异常可忽略，状态以本地为准。
+    }
+    rfb = null
+  }
+  vncConnected.value = false
+}
+
+async function connectVnc() {
+  if (!item.value || vncConnecting.value) return
+  vncConnecting.value = true
+  vncManualClose = false
+  try {
+    teardownVnc()
+    await nextTick()
+    if (!vncTarget.value || !item.value) {
+      vncConnecting.value = false
+      return
+    }
+    // 同源中继：与 virtualis 一致，scale 拉伸铺满、resizeSession 关闭。
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const url = `${scheme}://${window.location.host}/api/services/${item.value.id}/vnc/ws`
+    rfb = new RFB(vncTarget.value, url)
+    rfb.scaleViewport = true
+    rfb.resizeSession = false
+    rfb.addEventListener('connect', onVncConnect)
+    rfb.addEventListener('disconnect', onVncDisconnect)
+  } catch (err) {
+    vncConnecting.value = false
+    toast.error(errorMessage(err))
+  }
+}
+
+function disconnectVnc() {
+  vncManualClose = true
+  teardownVnc()
+  vncManualClose = false
+  vncConnecting.value = false
+  toast.success(t('services.vncDisconnected'))
 }
 
 const poweringAction = ref<PowerAction | null>(null)
@@ -340,6 +469,31 @@ onMounted(async () => {
   await load()
   await loadUpstream()
   await loadMetrics()
+  await checkVnc()
+  // 图表约 10 秒采样一次（见 chartsHint），静默轮询不闪加载态；离开页面即停。
+  startMetricsTimer()
+})
+
+/** 路由复用组件时（services/1 → services/2）重置轮询与 VNC，避免旧会话泄漏。 */
+watch(() => route.params.id, async () => {
+  teardownVnc()
+  stopMetricsTimer()
+  renewInvoice.value = null
+  metrics.value = null
+  metricHistory.value = []
+  upstream.value = null
+  error.value = null
+  loading.value = true
+  await load()
+  await loadUpstream()
+  await loadMetrics()
+  await checkVnc()
+  startMetricsTimer()
+})
+
+onBeforeUnmount(() => {
+  stopMetricsTimer()
+  teardownVnc()
 })
 </script>
 
@@ -347,15 +501,16 @@ onMounted(async () => {
   <div class="space-y-6">
     <PageHeader :title="item?.name ?? t('services.detailTit')">
       <template #actions>
-        <Button v-if="canRenew" size="sm" variant="outline" :disabled="balanceRenewing" @click="askRenew('balance')">
-          <Loader2 v-if="balanceRenewing" class="animate-spin" />
+        <Button
+          v-if="canRenew && !renewInvoice"
+          size="sm"
+          :disabled="creatingRenew || isFree"
+          :title="isFree ? '免费服务无需在线续费' : ''"
+          @click="startRenew"
+        >
+          <Loader2 v-if="creatingRenew" class="animate-spin" />
           <RefreshCcw v-else />
-          余额续费
-        </Button>
-        <Button v-if="canRenew" size="sm" :disabled="renewing || !methods.length || isFree" :title="isFree ? '免费服务请使用余额续费' : ''" @click="askRenew('external')">
-          <Loader2 v-if="renewing" class="animate-spin" />
-          <RefreshCcw v-else />
-          {{ t('services.renew') }}
+          {{ creatingRenew ? t('services.renewing') : t('services.renew') }}
         </Button>
         <Button variant="outline" size="sm" as-child>
           <RouterLink :to="{ name: 'services' }">
@@ -384,33 +539,17 @@ onMounted(async () => {
          </Button>
        </AlertDescription>
      </Alert>
-    <div v-if="item && canRenew" class="space-y-3 rounded-lg border p-4">
-      <div v-if="isFree" class="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">免费服务请使用“余额续费”</div>
-      <template v-else>
-        <label for="renew-payment-method" class="text-sm font-medium">{{ t('payment.method') }}</label>
-        <select id="renew-payment-method" v-model="selectedMethod" class="border-input bg-background ring-offset-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none" :disabled="!methods.length || renewing">
-          <option value="" disabled>{{ methods.length ? t('payment.selectMethod') : t('payment.unavailable') }}</option>
-          <option v-for="method in methods" :key="method.id" :value="method.id">{{ method.name }}</option>
-        </select>
-      </template>
-      <div v-if="payment" class="space-y-3 rounded-lg border p-3 text-sm">
-        <div class="flex items-center justify-between gap-3">
-          <span>{{ t('payment.status') }}</span>
-          <span :class="payment.status === 'failed' ? 'text-destructive' : 'font-medium'">{{ t(`payment.${payment.status}`) }}</span>
-        </div>
-        <p v-if="payment.status === 'failed'" class="text-destructive text-xs">{{ payment.failure_reason || t('payment.failed') }}</p>
-        <div v-if="payment.status === 'pending'" class="flex flex-wrap gap-2">
-          <Button v-if="payment.pay_url" variant="outline" size="sm" @click="openPayment">
-            <ExternalLink />
-            {{ t('payment.open') }}
-          </Button>
-          <Button variant="outline" size="sm" :disabled="querying" @click="queryPayment">
-            <RefreshCcw :class="querying ? 'animate-spin' : ''" />
-            {{ querying ? t('payment.querying') : t('payment.query') }}
-          </Button>
-        </div>
-      </div>
+    <div v-if="item && canRenew && isFree" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+      免费服务无需在线续费
     </div>
+    <PayPanel
+       v-if="item && canRenew && !isFree && renewInvoice"
+       :total-cents="renewInvoice.total_cents"
+       :balance-cents="walletBalance"
+       purpose="invoice"
+       :target-id="renewInvoice.id"
+       @paid="onRenewPaid"
+    />
 
     <Card v-if="item && canPower">
       <CardContent class="space-y-3">
@@ -477,12 +616,42 @@ onMounted(async () => {
         </div>
       </CardContent>
     </Card>
+    <Card v-if="item && canPower">
+      <CardContent class="space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-medium">{{ t('services.vncTitle') }}</h2>
+          <div class="flex gap-2">
+            <Button
+              v-if="!vncConnected"
+              variant="outline"
+              size="sm"
+              :disabled="!vncAvailable || vncConnecting || vncChecking"
+              @click="connectVnc"
+            >
+              <Loader2 v-if="vncConnecting || vncChecking" class="animate-spin" />
+              {{ vncConnecting ? t('services.vncConnecting') : vncEverConnected ? t('services.vncReconnect') : t('services.vncOpen') }}
+            </Button>
+            <Button v-else variant="outline" size="sm" @click="disconnectVnc">
+              {{ t('services.vncDisconnect') }}
+            </Button>
+          </div>
+        </div>
+        <p class="text-muted-foreground text-xs">{{ t('services.vncHint') }}</p>
+        <p v-if="!vncAvailable" class="text-muted-foreground text-sm">
+          {{ vncChecking ? t('services.vncConnecting') : vncMessage || t('services.vncUnavailable') }}
+        </p>
+        <template v-else>
+          <div ref="vncTarget" class="h-[420px] w-full overflow-hidden rounded-lg border bg-black" />
+          <p v-if="vncConnected" class="text-xs text-emerald-600">{{ t('services.vncConnected') }}</p>
+        </template>
+      </CardContent>
+    </Card>
 
     <Card v-if="item && canPower">
       <CardContent class="space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-sm font-medium">{{ t('services.liveMetrics') }}</h2>
-          <Button variant="outline" size="sm" :disabled="metricsLoading" @click="loadMetrics">
+          <Button variant="outline" size="sm" :disabled="metricsLoading" @click="() => loadMetrics()">
             <Loader2 v-if="metricsLoading" class="animate-spin" />
             <RefreshCcw v-else />
             {{ t('services.metricsRefresh') }}
@@ -504,6 +673,28 @@ onMounted(async () => {
           <div><dt class="text-muted-foreground text-xs">{{ t('services.trafficUp') }}</dt><dd class="tabular">{{ formatBytes(metrics.network_tx_bytes) }}</dd></div>
         </dl>
         <p v-else-if="metricsError" class="text-muted-foreground text-xs">{{ t('services.metricsUnavailable') }}</p>
+        <div class="space-y-2 border-t pt-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-xs font-medium">{{ t('services.chartsTitle') }}</h3>
+            <Button variant="ghost" size="sm" :disabled="metricsLoading" @click="() => loadMetrics()">
+              <RefreshCcw class="size-3" />
+              {{ t('services.chartsRefresh') }}
+            </Button>
+          </div>
+          <p class="text-muted-foreground text-xs">{{ t('services.chartsHint') }}</p>
+          <div v-if="chartSeries.length" class="grid gap-3 sm:grid-cols-2">
+            <div v-for="series in chartSeries" :key="series.key" class="space-y-1 rounded-lg border p-3">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="text-muted-foreground text-xs">{{ series.label }}</span>
+                <span class="text-xs tabular">{{ series.current }}</span>
+              </div>
+              <svg viewBox="0 0 120 36" preserveAspectRatio="none" class="text-primary h-9 w-full" role="img" :aria-label="series.label">
+                <polyline :points="sparkPoints(series.values)" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+              </svg>
+            </div>
+          </div>
+          <p v-else class="text-muted-foreground text-xs">{{ t('services.chartsEmpty') }}</p>
+        </div>
       </CardContent>
     </Card>
 
@@ -542,13 +733,6 @@ onMounted(async () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    <ConfirmDialog
-      v-model:open="renewOpen"
-      :title="t('services.renew')"
-      :description="renewMessage"
-      :confirm-text="t('services.renew')"
-      @confirm="confirmRenew"
-    />
     <ConfirmDialog
       v-model:open="forceOpen"
       :title="t('services.powerTitle')"

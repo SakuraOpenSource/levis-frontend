@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/card'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import type { Product } from '@/lib/types'
+import { regionInfo } from '@/lib/regions'
 
 const props = defineProps<{ product: Product; pending?: boolean }>()
 const emit = defineEmits<{ add: [product: Product] }>()
@@ -30,6 +31,8 @@ const stockText = computed(() =>
 )
 /** 历史商品没有规格字段，后端会返回 null。 */
 const specs = computed(() => props.product.specs ?? [])
+/** 地区徽标：未设置（''）时隐藏，台湾等特殊映射由 regions.ts 统一处理。 */
+const region = computed(() => regionInfo(props.product.region || ''))
 </script>
 
 <template>
@@ -37,7 +40,10 @@ const specs = computed(() => props.product.specs ?? [])
     <CardHeader class="px-5">
       <CardTitle class="flex items-start justify-between gap-2 text-base">
         <span class="min-w-0 break-words">{{ props.product.name }}</span>
-        <Badge variant="secondary">{{ cycleLabel(props.product.billing_cycle) }}</Badge>
+        <span class="flex shrink-0 items-center gap-1">
+          <Badge v-if="region.code" variant="outline">{{ region.flag }} {{ region.name }}</Badge>
+          <Badge variant="secondary">{{ cycleLabel(props.product.billing_cycle) }}</Badge>
+        </span>
       </CardTitle>
       <CardDescription v-if="props.product.description" class="whitespace-pre-line">
         {{ props.product.description }}
