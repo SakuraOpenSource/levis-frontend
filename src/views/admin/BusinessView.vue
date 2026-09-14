@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, RotateCcw, Search } from 'lucide-vue-next'
 
@@ -28,6 +28,7 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
+ import type { BatchResult } from '@/lib/endpoints'
 import { formatDate, isZeroTime } from '@/lib/utils'
 import type { Product, Service, ServiceStatus } from '@/lib/types'
 
@@ -83,30 +84,129 @@ async function load(target = page.value) {
   }
 }
 
-const retryOpen = ref(false)
-const retryTarget = ref<Service | null>(null)
+ const retryOpen = ref(false)
+ const retryTarget = ref<Service | null>(null)
+ 
+ function askRetry(item: Service) {
+   retryTarget.value = item
+   retryOpen.value = true
+ }
+ 
+ async function retry() {
+   const item = retryTarget.value
+   retryOpen.value = false
+   if (!item) return
+   retryingId.value = item.id
+   try {
+     await adminApi.retryService(item.id)
+     toast.success(t('business.retried'))
+     await load()
+   } catch (err) {
+     toast.error(errorMessage(err))
+   } finally {
+     retryingId.value = null
+     retryTarget.value = null
+   }
+ }
+ 
+ /** 批量选择：存所选服务 ID，翻页保留，批量执行后清空。 */
+ const selected = ref<Set<number>>(new Set())
+ const allChecked = computed(
+   () => items.value.length > 0 && items.value.every((item) => selected.value.has(item.id)),
+ )
+ 
+ function toggleAll(checked: boolean) {
+   const next = new Set(selected.value)
+   for (const item of items.value) {
+     if (checked) next.add(item.id)
+     else next.delete(item.id)
+   }
+   selected.value = next
+ }
+ 
+ function toggleOne(id: number, checked: boolean) {
+   const next = new Set(selected.value)
+   if (checked) next.add(id)
+   else next.delete(id)
+   selected.value = next
+ }
+ 
+ type BatchAction = 'suspend' | 'resume' | 'delete'
+ const batchOpen = ref(false)
+ const batchAction = ref<BatchAction>('suspend')
+ const batchBusy = ref(false)
+ 
+ const batchDialog = computed(() => {
+   const count = selected.value.size
+   if (batchAction.value === 'suspend')
+     return {
+       title: t('admin.suspend'),
+       description: t('admin.batchSuspendConfirm', { count }),
+       confirm: t('admin.suspend'),
+     }
+   if (batchAction.value === 'resume')
+     return {
+       title: t('admin.resume'),
+       description: t('admin.batchResumeConfirm', { count }),
+       confirm: t('admin.resume'),
+     }
+   return {
+     title: t('common.delete'),
+     description: t('admin.batchDeleteConfirm', { count }),
+     confirm: t('common.delete'),
+   }
+ })
+ 
+ function askBatch(action: BatchAction) {
+   if (!selected.value.size) return
+   batchAction.value = action
+   batchOpen.value = true
+ }
+ 
+ /** 批量结果播报：全成功走成功提示，有失败则列出前几条原因。 */
+ function reportBatch(result: BatchResult, okMessage: string) {
+   if (!result.failed.length) {
+     toast.success(okMessage)
+     return
+   }
+   const detail = result.failed
+     .slice(0, 5)
+     .map((f) => `#${f.id} ${f.reason}`)
+     .join('；')
+   toast.error(t('admin.batchPartial', { ok: result.ok.length, fail: result.failed.length, detail }))
+ }
+ 
+ async function runBatch() {
+   const ids = [...selected.value]
+   batchOpen.value = false
+   if (!ids.length) return
+   batchBusy.value = true
+   try {
+     // 后端单次最多 100 条：分片串行调用再合并结果，避免整批被拒。
+     const merged: BatchResult = { ok: [], failed: [] }
+     for (let i = 0; i < ids.length; i += 100) {
+       const chunk = ids.slice(i, i + 100)
+       let part: BatchResult
+       if (batchAction.value === 'suspend') part = await adminApi.batchServicesStatus(chunk, 'suspended')
+       else if (batchAction.value === 'resume') part = await adminApi.batchServicesStatus(chunk, 'active')
+       else part = await adminApi.batchDeleteServices(chunk)
+       merged.ok.push(...part.ok)
+       merged.failed.push(...part.failed)
+     }
+     reportBatch(merged, batchAction.value === 'delete' ? t('common.deleted') : t('common.updated'))
+     selected.value = new Set()
+     await load()
+   } catch (err) {
+     toast.error(errorMessage(err))
+   } finally {
+     batchBusy.value = false
+   }
+ }
 
-function askRetry(item: Service) {
-  retryTarget.value = item
-  retryOpen.value = true
-}
-
-async function retry() {
-  const item = retryTarget.value
-  retryOpen.value = false
-  if (!item) return
-  retryingId.value = item.id
-  try {
-    await adminApi.retryService(item.id)
-    toast.success(t('business.retried'))
-    await load()
-  } catch (err) {
-    toast.error(errorMessage(err))
-  } finally {
-    retryingId.value = null
-    retryTarget.value = null
-  }
-}
+ // 筛选条件变化时旧的勾选已无意义，直接清空，避免误操作不可见行。
+ watch([status, productId, userIdText], () => {
+   selected.value = new Set()
+ })
 
 onMounted(async () => {
   try {
@@ -169,29 +269,59 @@ onMounted(async () => {
       </div>
     </div>
 
-    <ErrorAlert :message="error" />
-    <LoadingBlock v-if="loading" :rows="5" />
+     <ErrorAlert :message="error" />
+     <div v-if="selected.size" class="flex flex-wrap items-center gap-2">
+       <span class="text-muted-foreground text-sm">{{ t('common.selectedCount', { count: selected.size }) }}</span>
+       <Button size="sm" variant="outline" :disabled="batchBusy" @click="askBatch('suspend')">
+         {{ t('admin.suspend') }}
+       </Button>
+       <Button size="sm" variant="outline" :disabled="batchBusy" @click="askBatch('resume')">
+         {{ t('admin.resume') }}
+       </Button>
+       <Button size="sm" variant="destructive" :disabled="batchBusy" @click="askBatch('delete')">
+         {{ t('common.delete') }}
+       </Button>
+     </div>
+     <LoadingBlock v-if="loading" :rows="5" />
 
     <template v-else>
       <Card class="py-0">
         <CardContent class="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>{{ t('business.buyer') }}</TableHead>
-                <TableHead>{{ t('services.name') }}</TableHead>
-                <TableHead>{{ t('business.product') }}</TableHead>
-                <TableHead>{{ t('services.status') }}</TableHead>
-                <TableHead>{{ t('business.provisionError') }}</TableHead>
-                <TableHead class="text-right">{{ t('services.price') }}</TableHead>
-                <TableHead>{{ t('services.expires') }}</TableHead>
-                <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableEmpty v-if="!items.length" :colspan="9">{{ t('business.empty') }}</TableEmpty>
-              <TableRow v-for="item in items" v-else :key="item.id">
+           <Table>
+             <TableHeader>
+               <TableRow>
+                 <TableHead class="w-10">
+                   <input
+                     type="checkbox"
+                     class="size-4"
+                     :checked="allChecked"
+                     :aria-label="t('common.selectAll')"
+                     @change="toggleAll(($event.target as HTMLInputElement).checked)"
+                   />
+                 </TableHead>
+                 <TableHead>ID</TableHead>
+                 <TableHead>{{ t('business.buyer') }}</TableHead>
+                 <TableHead>{{ t('services.name') }}</TableHead>
+                 <TableHead>{{ t('business.product') }}</TableHead>
+                 <TableHead>{{ t('services.status') }}</TableHead>
+                 <TableHead>{{ t('business.provisionError') }}</TableHead>
+                 <TableHead class="text-right">{{ t('services.price') }}</TableHead>
+                 <TableHead>{{ t('services.expires') }}</TableHead>
+                 <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
+               </TableRow>
+             </TableHeader>
+             <TableBody>
+               <TableEmpty v-if="!items.length" :colspan="10">{{ t('business.empty') }}</TableEmpty>
+               <TableRow v-for="item in items" v-else :key="item.id">
+                 <TableCell>
+                   <input
+                     type="checkbox"
+                     class="size-4"
+                     :checked="selected.has(item.id)"
+                     :aria-label="String(item.id)"
+                     @change="toggleOne(item.id, ($event.target as HTMLInputElement).checked)"
+                   />
+                 </TableCell>
                 <TableCell class="font-mono text-xs tabular">{{ item.id }}</TableCell>
                 <TableCell class="tabular">#{{ item.user_id }}</TableCell>
                 <TableCell class="max-w-44 truncate font-medium" :title="item.name">
@@ -231,12 +361,21 @@ onMounted(async () => {
       <Pager :page="page" :page-size="pageSize" :total="total" @change="load" />
     </template>
 
-    <ConfirmDialog
-      v-model:open="retryOpen"
-      :title="t('business.retry')"
-      :description="retryTarget ? t('business.retryConfirm', { name: retryTarget.name }) : ''"
-      :confirm-text="t('common.retry')"
-      @confirm="retry"
-    />
+     <ConfirmDialog
+       v-model:open="retryOpen"
+       :title="t('business.retry')"
+       :description="retryTarget ? t('business.retryConfirm', { name: retryTarget.name }) : ''"
+       :confirm-text="t('common.retry')"
+       @confirm="retry"
+     />
+     <ConfirmDialog
+       v-model:open="batchOpen"
+       :title="batchDialog.title"
+       :description="batchDialog.description"
+       :confirm-text="batchDialog.confirm"
+       :danger="batchAction === 'delete'"
+       :confirming="batchBusy"
+       @confirm="runBatch"
+     />
   </div>
 </template>

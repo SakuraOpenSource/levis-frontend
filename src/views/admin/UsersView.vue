@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Boxes, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-vue-next'
 
@@ -36,6 +36,7 @@ import {
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
+ import type { BatchResult } from '@/lib/endpoints'
 import { formatDateTime } from '@/lib/utils'
 import type { Role, UpdateUserInput, User, UserStatus } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth'
@@ -193,6 +194,105 @@ async function remove() {
   }
 }
 
+ /** 批量选择：存所选用户 ID，翻页保留，批量执行后清空。 */
+ const selected = ref<Set<number>>(new Set())
+ const allChecked = computed(
+   () => items.value.length > 0 && items.value.every((item) => selected.value.has(item.id)),
+ )
+
+ function toggleAll(checked: boolean) {
+   const next = new Set(selected.value)
+   for (const item of items.value) {
+     if (checked) next.add(item.id)
+     else next.delete(item.id)
+   }
+   selected.value = next
+ }
+
+ function toggleOne(id: number, checked: boolean) {
+   const next = new Set(selected.value)
+   if (checked) next.add(id)
+   else next.delete(id)
+   selected.value = next
+ }
+
+ type BatchAction = 'enable' | 'disable' | 'delete'
+ const batchOpen = ref(false)
+ const batchAction = ref<BatchAction>('enable')
+ const batchBusy = ref(false)
+
+ const batchDialog = computed(() => {
+   const count = selected.value.size
+   if (batchAction.value === 'enable')
+     return {
+       title: t('common.enable'),
+       description: t('admin.batchEnableConfirm', { count }),
+       confirm: t('common.enable'),
+     }
+   if (batchAction.value === 'disable')
+     return {
+       title: t('common.disable'),
+       description: t('admin.batchDisableConfirm', { count }),
+       confirm: t('common.disable'),
+     }
+   return {
+     title: t('common.delete'),
+     description: t('admin.batchDeleteConfirm', { count }),
+     confirm: t('common.delete'),
+   }
+ })
+
+ function askBatch(action: BatchAction) {
+   if (!selected.value.size) return
+   batchAction.value = action
+   batchOpen.value = true
+ }
+
+ /** 批量结果播报：全成功走成功提示，有失败则列出前几条原因。 */
+ function reportBatch(result: BatchResult, okMessage: string) {
+   if (!result.failed.length) {
+     toast.success(okMessage)
+     return
+   }
+   const detail = result.failed
+     .slice(0, 5)
+     .map((f) => `#${f.id} ${f.reason}`)
+     .join('；')
+   toast.error(t('admin.batchPartial', { ok: result.ok.length, fail: result.failed.length, detail }))
+ }
+
+ async function runBatch() {
+   const ids = [...selected.value]
+   batchOpen.value = false
+   if (!ids.length) return
+   batchBusy.value = true
+   try {
+     // 后端单次最多 100 条：分片串行调用再合并结果，避免整批被拒。
+     const merged: BatchResult = { ok: [], failed: [] }
+     for (let i = 0; i < ids.length; i += 100) {
+       const chunk = ids.slice(i, i + 100)
+       let part: BatchResult
+       if (batchAction.value === 'enable') part = await adminApi.batchUsersStatus(chunk, 'active')
+       else if (batchAction.value === 'disable') part = await adminApi.batchUsersStatus(chunk, 'disabled')
+       else part = await adminApi.batchDeleteUsers(chunk)
+       merged.ok.push(...part.ok)
+       merged.failed.push(...part.failed)
+     }
+     reportBatch(merged, batchAction.value === 'delete' ? t('common.deleted') : t('common.updated'))
+     selected.value = new Set()
+     await load()
+   } catch (err) {
+     toast.error(errorMessage(err))
+   } finally {
+     batchBusy.value = false
+   }
+ }
+
+ // 搜索条件变化时旧的勾选已无意义，直接清空，避免误操作不可见行。
+ watch(keyword, () => {
+   selected.value = new Set()
+ })
+
 onMounted(() => load())
 </script>
 
@@ -216,6 +316,18 @@ onMounted(() => load())
     </form>
 
     <ErrorAlert :message="error" />
+     <div v-if="selected.size" class="flex flex-wrap items-center gap-2">
+       <span class="text-muted-foreground text-sm">{{ t('common.selectedCount', { count: selected.size }) }}</span>
+       <Button size="sm" variant="outline" :disabled="batchBusy" @click="askBatch('enable')">
+         {{ t('common.enable') }}
+       </Button>
+       <Button size="sm" variant="outline" :disabled="batchBusy" @click="askBatch('disable')">
+         {{ t('common.disable') }}
+       </Button>
+       <Button size="sm" variant="destructive" :disabled="batchBusy" @click="askBatch('delete')">
+         {{ t('common.delete') }}
+       </Button>
+     </div>
     <LoadingBlock v-if="loading" :rows="5" />
 
     <template v-else>
@@ -224,8 +336,17 @@ onMounted(() => load())
           <Table>
             <TableHeader>
               <TableRow>
+               <TableHead class="w-10">
+                 <input
+                   type="checkbox"
+                   class="size-4"
+                   :checked="allChecked"
+                   :aria-label="t('common.selectAll')"
+                   @change="toggleAll(($event.target as HTMLInputElement).checked)"
+                 />
+               </TableHead>
                 <TableHead>{{ t('admin.username') }}</TableHead>
-                <TableHead>{{ t('admin.email') }}</TableHead>
+                 <TableHead>{{ t('admin.email') }}</TableHead>
                 <TableHead>{{ t('admin.role') }}</TableHead>
                 <TableHead>{{ t('admin.status') }}</TableHead>
                 <TableHead class="text-right">{{ t('dashboard.balance') }}</TableHead>
@@ -234,8 +355,17 @@ onMounted(() => load())
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!items.length" :colspan="7">{{ t('common.empty') }}</TableEmpty>
+               <TableEmpty v-if="!items.length" :colspan="8">{{ t('common.empty') }}</TableEmpty>
               <TableRow v-for="item in items" v-else :key="item.id">
+                 <TableCell>
+                   <input
+                     type="checkbox"
+                     class="size-4"
+                     :checked="selected.has(item.id)"
+                     :aria-label="item.username"
+                     @change="toggleOne(item.id, ($event.target as HTMLInputElement).checked)"
+                   />
+                 </TableCell>
                 <TableCell class="font-medium">{{ item.username }}</TableCell>
                 <TableCell class="max-w-52 truncate">{{ item.email }}</TableCell>
                 <TableCell>
@@ -381,5 +511,14 @@ onMounted(() => load())
       danger
       @confirm="remove"
     />
+     <ConfirmDialog
+       v-model:open="batchOpen"
+       :title="batchDialog.title"
+       :description="batchDialog.description"
+       :confirm-text="batchDialog.confirm"
+       :danger="batchAction === 'delete'"
+       :confirming="batchBusy"
+       @confirm="runBatch"
+     />
   </div>
 </template>

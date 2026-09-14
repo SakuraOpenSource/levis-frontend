@@ -28,18 +28,20 @@ import type {
   Page,
   PayResult,
   PowerAction,
-  Product,
-  ProductInput,
-  RenewResult,
-  Service,
-  ServiceStatus,
-  Ticket,
-  TicketReply,
-  TicketStatus,
-  Transaction,
-  UpdateUserInput,
-  User,
-  Verification,
+   Product,
+   ProductInput,
+   ProductStatus,
+   RenewResult,
+   Service,
+   ServiceStatus,
+   Ticket,
+   TicketReply,
+   TicketStatus,
+   Transaction,
+   UpdateUserInput,
+   User,
+   UserStatus,
+   Verification,
   WalletOverview,
   BillingCycle,
   Plugin,
@@ -60,9 +62,20 @@ interface PageQuery {
   page?: number
   page_size?: number
 }
+ /** 批量操作单条失败原因，与后端 service.BatchItemFailure 一致。 */
+ export interface BatchItemFailure {
+   id: number
+   reason: string
+ }
 
-/** 证件照的两面，与后端 service.SideFront / SideBack 一致。 */
-export type PhotoSide = 'front' | 'back'
+ /** 批量操作结果：成功的 ID 与逐条失败原因，与后端 service.BatchResult 一致。 */
+ export interface BatchResult {
+   ok: number[]
+   failed: BatchItemFailure[]
+ }
+
+ /** 证件照的两面，与后端 service.SideFront / SideBack 一致。 */
+ export type PhotoSide = 'front' | 'back'
 
 /**
  * 把工单的主题、正文与附件装进 FormData。
@@ -460,9 +473,19 @@ export const adminApi = {
     const { data } = await http.patch<User>(`/admin/users/${id}`, payload)
     return data
   },
-  async deleteUser(id: number) {
-    await http.delete(`/admin/users/${id}`)
-  },
+   async deleteUser(id: number) {
+     await http.delete(`/admin/users/${id}`)
+   },
+   /** 批量启用/禁用用户，返回逐条结果（自我禁用记为单条失败）。 */
+   async batchUsersStatus(ids: number[], status: UserStatus) {
+     const { data } = await http.post<BatchResult>('/admin/users/batch-status', { ids, status })
+     return data
+   },
+   /** 批量删除用户，返回逐条结果（自删/删光管理员记为单条失败）。 */
+   async batchDeleteUsers(ids: number[]) {
+     const { data } = await http.post<BatchResult>('/admin/users/batch-delete', { ids })
+     return data
+   },
   async categories() {
     const { data } = await http.get<{ items: Category[] | null }>('/admin/categories')
     return data.items ?? []
@@ -509,6 +532,16 @@ export const adminApi = {
   async deleteProduct(id: number) {
     await http.delete(`/admin/products/${id}`)
   },
+   /** 批量上架/下架商品，返回逐条结果。 */
+   async batchProductsStatus(ids: number[], status: ProductStatus) {
+     const { data } = await http.post<BatchResult>('/admin/products/batch-status', { ids, status })
+     return data
+   },
+   /** 批量删除商品，返回逐条结果（已有服务引用的记为单条失败）。 */
+   async batchDeleteProducts(ids: number[]) {
+     const { data } = await http.post<BatchResult>('/admin/products/batch-delete', { ids })
+     return data
+   },
   async provisionPlugins() {
     const { data } = await http.get<{
       items: { id: string; name: string; config?: ModuleConfigField[] }[]
@@ -574,6 +607,16 @@ export const adminApi = {
   async deleteService(id: number) {
     await http.delete(`/admin/services/${id}`)
   },
+   /** 批量暂停/恢复服务，返回逐条结果（已终止等状态记为单条失败）。 */
+   async batchServicesStatus(ids: number[], status: 'active' | 'suspended') {
+     const { data } = await http.post<BatchResult>('/admin/services/batch-status', { ids, status })
+     return data
+   },
+   /** 批量删除服务，返回逐条结果（上游终止失败的记为单条失败）。 */
+   async batchDeleteServices(ids: number[]) {
+     const { data } = await http.post<BatchResult>('/admin/services/batch-delete', { ids })
+     return data
+   },
   async createServiceForUser(userId: number, payload: { product_id: number; quantity?: number; billing_cycle?: string; provision: boolean }) {
     const { data } = await http.post<Service>(`/admin/users/${userId}/services`, payload)
     return data
