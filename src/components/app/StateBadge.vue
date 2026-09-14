@@ -45,7 +45,7 @@ const LABEL_PREFIX: Record<Kind, string> = {
   ticket: 'ticketStatus',
   kyc: 'kycStatus',
   apiKey: 'apiKeyStatus',
-  plugin: 'pluginStatus',
+  plugin: 'admin.pluginStatus',
 }
 
 const variant = computed<BadgeVariants['variant']>(

@@ -257,7 +257,7 @@ onMounted(() => {
   <div class="space-y-6">
     <PageHeader :title="t('admin.financeTitle')" :description="t('admin.financeSubtitle')">
       <template #actions>
-        <Button v-if="tab === 'methods'" @click="openCreate">
+        <Button v-if="tab === 'methods'" :disabled="loading" @click="openCreate">
           <Plus />
           {{ t('admin.newPaymentMethod') }}
         </Button>
@@ -424,7 +424,11 @@ onMounted(() => {
             <Input v-model="form.name" :placeholder="t('admin.paymentMethodNameHint')" />
           </div>
 
-          <div class="space-y-2">
+          <p v-if="plugins.length === 0" class="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+            {{ t('admin.noPaymentPluginsHint') }}
+            <RouterLink :to="{ name: 'admin-plugins' }" class="underline">{{ t('adminNav.plugins') }}</RouterLink>
+          </p>
+          <div v-else class="space-y-2">
             <Label>{{ t('admin.paymentPlugin') }} *</Label>
             <Select :model-value="form.plugin_id" @update:model-value="(v: any) => onPluginChange(v as string)">
               <SelectTrigger>

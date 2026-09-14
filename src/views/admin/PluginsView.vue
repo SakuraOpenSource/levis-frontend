@@ -19,8 +19,14 @@ import { errorMessage } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
 import type { Plugin, PluginConfigField, PluginScope } from '@/lib/types'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const toast = useToast()
+
+/** 能力短名转中文：未知的新能力回退显示原文，避免再出现裸 key。 */
+function capabilityLabel(capability: string) {
+  const key = `admin.capability.${capability}`
+  return te(key) ? t(key) : capability
+}
 const plugins = ref<Plugin[]>([])
 const scopes = ref<PluginScope[]>([])
 const loading = ref(true)
@@ -185,7 +191,7 @@ onMounted(load)
             <p v-if="item.last_error" class="text-destructive text-xs">{{ item.last_error }}</p>
             <p v-if="item.state === 'skipped'" class="text-muted-foreground text-xs">{{ item.last_error }}</p>
             <div class="flex flex-wrap gap-2">
-              <Badge v-for="capability in item.capabilities" :key="capability" variant="outline">{{ capability }}</Badge>
+              <Badge v-for="capability in item.capabilities" :key="capability" variant="outline">{{ capabilityLabel(capability) }}</Badge>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <Button size="sm" :disabled="busy || item.state === 'skipped'" @click="toggle(item)">

@@ -710,6 +710,13 @@ export default {
       crashed: '已崩溃',
       skipped: '不可加载',
     },
+    capability: {
+      send_mail: '邮件发送',
+      create_payment: '创建支付',
+      provision_product: '产品开通',
+      kyc: '实名认证',
+      unknown: '未知能力',
+    },
   },
   cycle: {
     onetime: '一次性',
