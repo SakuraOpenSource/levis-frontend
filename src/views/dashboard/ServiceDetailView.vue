@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Trash2, Zap, ZapOff } from 'lucide-vue-next'
 import RFB from '@novnc/novnc'
 
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
@@ -27,12 +27,13 @@ import {
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { catalogApi, serviceApi, walletApi } from '@/lib/endpoints'
 import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
-import type { HostMetrics, Invoice, OSImage, PowerAction, Service, UpstreamHost } from '@/lib/types'
+import type { HostMetrics, Invoice, NatMapping, OSImage, PowerAction, Service, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -185,6 +186,86 @@ async function loadUpstream() {
     upstream.value = null
   } finally {
     upstreamLoading.value = false
+  }
+}
+
+// NAT 端口映射：公网端口 → 实例端口，仅上游开通的服务可用。
+const natMappings = ref<NatMapping[]>([])
+const natLoading = ref(false)
+const natCreating = ref(false)
+const natProtocol = ref<'tcp' | 'udp'>('tcp')
+const natHostPort = ref('')
+const natGuestPort = ref('')
+const natRemark = ref('')
+const natDeleteOpen = ref(false)
+const natDeleteTarget = ref<NatMapping | null>(null)
+const natDeletingId = ref<number | null>(null)
+
+async function loadNat() {
+  if (!item.value || !canPower.value) return
+  natLoading.value = true
+  try {
+    natMappings.value = await serviceApi.natList(item.value.id)
+  } catch {
+    natMappings.value = []
+  } finally {
+    natLoading.value = false
+  }
+}
+
+/** 提交门禁：实例端口必填且为 1-65535 整数；宿主端口留空即自动分配。 */
+const natSubmittable = computed(() => {
+  const guest = Number(natGuestPort.value)
+  if (!Number.isInteger(guest) || guest < 1 || guest > 65535) return false
+  if (natHostPort.value !== '') {
+    const host = Number(natHostPort.value)
+    if (!Number.isInteger(host) || host < 1 || host > 65535) return false
+  }
+  return true
+})
+
+async function createNat() {
+  if (!item.value || natCreating.value || !natSubmittable.value) return
+  natCreating.value = true
+  try {
+    await serviceApi.natCreate(item.value.id, {
+      protocol: natProtocol.value,
+      guest_port: Number(natGuestPort.value),
+      ...(natHostPort.value === '' ? {} : { host_port: Number(natHostPort.value) }),
+      ...(natRemark.value.trim() ? { remark: natRemark.value.trim() } : {}),
+    })
+    toast.success(t('services.natCreated'))
+    natHostPort.value = ''
+    natGuestPort.value = ''
+    natRemark.value = ''
+    natProtocol.value = 'tcp'
+    await loadNat()
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    natCreating.value = false
+  }
+}
+
+function askNatDelete(mapping: NatMapping) {
+  natDeleteTarget.value = mapping
+  natDeleteOpen.value = true
+}
+
+async function confirmNatDelete() {
+  const target = natDeleteTarget.value
+  natDeleteOpen.value = false
+  natDeleteTarget.value = null
+  if (!item.value || !target) return
+  natDeletingId.value = target.mapping_id
+  try {
+    await serviceApi.natDelete(item.value.id, target.mapping_id)
+    toast.success(t('services.natDeleted'))
+    await loadNat()
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    natDeletingId.value = null
   }
 }
 
@@ -551,6 +632,7 @@ onMounted(async () => {
   await load()
   await loadTrafficPrice()
   await loadUpstream()
+  await loadNat()
   await loadMetrics()
   await checkVnc()
   // 图表约 10 秒采样一次（见 chartsHint），静默轮询不闪加载态；离开页面即停。
@@ -567,11 +649,13 @@ watch(() => route.params.id, async () => {
   metrics.value = null
   metricHistory.value = []
   upstream.value = null
+  natMappings.value = []
   error.value = null
   loading.value = true
   await load()
   await loadTrafficPrice()
   await loadUpstream()
+  await loadNat()
   await loadMetrics()
   await checkVnc()
   startMetricsTimer()
@@ -745,6 +829,79 @@ onBeforeUnmount(() => {
         </div>
       </CardContent>
     </Card>
+    <!-- NAT 端口映射卡片 -->
+    <Card v-if="item && canPower">
+      <CardContent class="space-y-3">
+        <h2 class="text-sm font-medium">{{ t('services.natTitle') }}</h2>
+        <p class="text-muted-foreground text-xs">{{ t('services.natHint') }}</p>
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="space-y-1">
+            <Label for="nat-protocol">{{ t('services.natProtocol') }}</Label>
+            <Select :model-value="natProtocol" @update:model-value="(v: any) => (natProtocol = v === 'udp' ? 'udp' : 'tcp')">
+              <SelectTrigger id="nat-protocol" class="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tcp">TCP</SelectItem>
+                <SelectItem value="udp">UDP</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1">
+            <Label for="nat-guest-port">{{ t('services.natGuestPort') }}</Label>
+            <Input id="nat-guest-port" v-model="natGuestPort" type="number" min="1" max="65535" class="w-32" placeholder="1-65535" />
+          </div>
+          <div class="space-y-1">
+            <Label for="nat-host-port">{{ t('services.natHostPort') }}</Label>
+            <Input id="nat-host-port" v-model="natHostPort" type="number" min="1" max="65535" class="w-32" :placeholder="t('services.natAutoAssign')" />
+          </div>
+          <div class="space-y-1">
+            <Label for="nat-remark">{{ t('services.natRemark') }}</Label>
+            <Input id="nat-remark" v-model="natRemark" type="text" class="w-40" />
+          </div>
+          <Button size="sm" :disabled="natCreating || !natSubmittable" @click="createNat">
+            <Loader2 v-if="natCreating" class="animate-spin" />
+            {{ t('services.natAdd') }}
+          </Button>
+        </div>
+        <p class="text-muted-foreground text-xs">{{ t('services.natSshHint') }}</p>
+        <div class="overflow-hidden rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t('services.natProtocol') }}</TableHead>
+                <TableHead>{{ t('services.natHostPort') }}</TableHead>
+                <TableHead>{{ t('services.natGuestPort') }}</TableHead>
+                <TableHead>{{ t('services.natRemark') }}</TableHead>
+                <TableHead class="text-right">{{ t('common.actions') }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableEmpty v-if="!natLoading && !natMappings.length" :colspan="5">{{ t('services.natEmpty') }}</TableEmpty>
+              <TableRow v-for="mapping in natMappings" v-else :key="mapping.mapping_id">
+                <TableCell class="font-medium uppercase">{{ mapping.protocol }}</TableCell>
+                <TableCell class="tabular">{{ mapping.host_port }}</TableCell>
+                <TableCell class="tabular">{{ mapping.guest_port }}</TableCell>
+                <TableCell class="text-muted-foreground text-xs">{{ mapping.remark || '-' }}</TableCell>
+                <TableCell class="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-8"
+                    :disabled="natDeletingId !== null"
+                    :aria-label="t('services.natDelete')"
+                    @click="askNatDelete(mapping)"
+                  >
+                    <Loader2 v-if="natDeletingId === mapping.mapping_id" class="animate-spin" />
+                    <Trash2 v-else class="text-destructive" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
      <Card v-if="item && canPower">
        <CardContent class="space-y-3">
          <div class="flex flex-wrap items-center justify-between gap-2">
@@ -895,6 +1052,15 @@ onBeforeUnmount(() => {
        :confirming="retrying"
        @confirm="confirmProvisionRetry"
      />
+    <ConfirmDialog
+      v-model:open="natDeleteOpen"
+      :title="t('services.natDelete')"
+      :description="t('services.natDeleteConfirm')"
+      :confirm-text="t('common.delete')"
+      danger
+      :confirming="natDeletingId !== null"
+      @confirm="confirmNatDelete"
+    />
 
     <Card v-if="item">
       <CardContent>

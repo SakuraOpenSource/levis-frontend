@@ -49,6 +49,8 @@ import { http, postForm } from './api'
  Plugin,
  PluginConfigInput,
  ModuleConfigField,
+ NatCreateInput,
+ NatMapping,
  PluginListResponse,
  ExternalPayment,
  PaymentMethod,
@@ -350,6 +352,21 @@ export const orderApi = {
    async osList(id: number) {
      const { data } = await http.get<{ items: OSImage[] }>(`/services/${id}/os`)
      return data.items ?? []
+   },
+   /** NAT 端口映射列表。 */
+   async natList(id: number) {
+     const { data } = await http.get<{ items: NatMapping[] | null }>(`/services/${id}/nat`)
+     return data.items ?? []
+   },
+   /** 新增 NAT 映射：host_port 省略或 0 表示由系统自动分配。 */
+   async natCreate(id: number, payload: NatCreateInput) {
+     const { data } = await http.post<{ mapping: NatMapping }>(`/services/${id}/nat`, payload)
+     return data.mapping
+   },
+   /** 删除 NAT 映射，返回后端 message。 */
+   async natDelete(id: number, mappingId: number) {
+     const { data } = await http.delete<{ message: string }>(`/services/${id}/nat/${mappingId}`)
+     return data
    },
  }
 

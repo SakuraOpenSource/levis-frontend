@@ -294,6 +294,22 @@ export interface UpstreamHost {
   ssh_ready?: boolean
 }
 
+/** NAT 端口映射：公网 host_port 转发到实例 guest_port。 */
+export interface NatMapping {
+  mapping_id: number
+  protocol: 'tcp' | 'udp'
+  host_port: number
+  guest_port: number
+  remark: string
+}
+
+/** 新增 NAT 映射的入参：host_port 省略或 0 表示由系统自动分配。 */
+export interface NatCreateInput {
+  protocol?: 'tcp' | 'udp'
+  host_port?: number
+  guest_port: number
+  remark?: string
+}
  /** 上游主机实时监控：CPU 占用、内存占用、上下行流量与速率。 */
  export interface HostMetrics {
    cpu_percent: number
