@@ -87,7 +87,7 @@ function trafficLabel(gb: number) {
 const fixedSpecs = computed(() => {
   if (!cfg.value) return []
   return [
-    { label: 'CPU', value: `${cfg.value.cpu.min} 核` },
+    { label: 'CPU', value: `${formatSpec(cfg.value.cpu.min)} 核` },
     { label: '内存', value: `${cfg.value.memory_mb.min} MB` },
     { label: '硬盘', value: `${cfg.value.disk_gb.min} GB` },
     { label: '带宽', value: cfg.value.bandwidth_mbps.min > 0 ? `${cfg.value.bandwidth_mbps.min} Mbps` : '不限' },
@@ -95,6 +95,11 @@ const fixedSpecs = computed(() => {
     { label: '驱动', value: cfg.value.driver === 'incus' ? 'Incus 容器' : 'QEMU 虚拟机' },
   ]
 })
+
+/** 规格数值展示：去掉浮点尾差与尾零（2 → "2"、0.25 → "0.25"、0.30000004 → "0.3"）。 */
+function formatSpec(value: number) {
+  return String(Math.round(value * 100) / 100)
+}
 
 function initPicks(config: ProvisionConfig) {
   picks.cpu = config.cpu.min
@@ -104,25 +109,34 @@ function initPicks(config: ProvisionConfig) {
   picks.traffic_gb = config.traffic_gb.min
 }
 
+/**
+ * 弹性步长：CPU 支持小数核数（如 0.05），其余维度仍保持整数语义、
+ * 至少为 1；历史配置没有 step 字段时按 1 兼容。
+ */
 function rangeStep(field: (typeof FIELDS)[number], config = cfg.value) {
-  return Math.max(config?.[field.key].step ?? 1, 1)
+  const step = config?.[field.key].step ?? 1
+  if (field.key === 'cpu') return step > 0 ? step : 1
+  return Math.max(step, 1)
+}
+
+/** 吸附到最近的合法步长点并夹回区间内，两位小数取整消除浮点尾差。 */
+function snapToStep(range: { min: number; max: number }, value: number, step: number) {
+  const steps = Math.round((value - range.min) / step)
+  const snapped = Math.round((range.min + steps * step) * 100) / 100
+  return Math.min(range.max, Math.max(range.min, snapped))
 }
 
 function clampPick(field: (typeof FIELDS)[number]) {
   if (!cfg.value) return
   const range = cfg.value[field.key]
-  const step = rangeStep(field)
   const raw = Number(picks[field.key])
-  const value = Number.isFinite(raw) ? raw : range.min
-  const steps = Math.round((value - range.min) / step)
-  picks[field.key] = Math.min(range.max, Math.max(range.min, range.min + steps * step))
+  picks[field.key] = snapToStep(range, Number.isFinite(raw) ? raw : range.min, rangeStep(field))
 }
 
 function adjustPick(field: (typeof FIELDS)[number], direction: number) {
   if (!cfg.value) return
   const range = cfg.value[field.key]
-  const step = rangeStep(field)
-  picks[field.key] = Math.min(range.max, Math.max(range.min, picks[field.key] + direction * step))
+  picks[field.key] = snapToStep(range, picks[field.key] + direction * rangeStep(field), rangeStep(field))
 }
 
 const provisionExtraCents = computed(() => {
@@ -179,10 +193,17 @@ async function loadImages() {
   if (cfg.value.mode === 'elastic') {
     for (const field of FIELDS) {
       const range = cfg.value[field.key]
-      const value = picks[field.key]
+      const value = Number(picks[field.key])
       const step = rangeStep(field)
-      if (value < range.min || value > range.max || (value - range.min) % step !== 0) {
-        formError.value = `${field.label}需在 ${range.min} - ${range.max} ${field.unit} 之间，步长为 ${step}`
+      // 与后端同口径：区间内且 (value-min)/step 接近整数，浮点留 1e-6 容差。
+      const steps = (value - range.min) / step
+      if (
+        !Number.isFinite(value) ||
+        value < range.min ||
+        value > range.max ||
+        Math.abs(steps - Math.round(steps)) > 1e-6
+      ) {
+        formError.value = `${field.label}需在 ${formatSpec(range.min)} - ${formatSpec(range.max)} ${field.unit} 之间，步长为 ${formatSpec(step)}`
         return
       }
     }
@@ -196,11 +217,12 @@ async function loadImages() {
        agree: agreed.value,
       options: {
         driver: cfg.value.driver,
-        cpu: String(picks.cpu),
-        memory_mb: String(picks.memory_mb),
-        disk_gb: String(picks.disk_gb),
-        bandwidth_mbps: String(picks.bandwidth_mbps),
-        traffic_gb: String(picks.traffic_gb),
+        // formatSpec 统一去浮点尾差：0.5000000000000001 会提交成 "0.5"。
+        cpu: formatSpec(picks.cpu),
+        memory_mb: formatSpec(picks.memory_mb),
+        disk_gb: formatSpec(picks.disk_gb),
+        bandwidth_mbps: formatSpec(picks.bandwidth_mbps),
+        traffic_gb: formatSpec(picks.traffic_gb),
         image_id: selectedImage.value,
         image_name: images.value.find((item) => item.id === selectedImage.value)?.name ?? '',
       },
@@ -265,7 +287,7 @@ onMounted(async () => {
               <div class="flex items-center justify-between">
                 <Label :for="`pick-${field.key}`">{{ field.label }}</Label>
                 <span class="text-muted-foreground text-xs">
-                  {{ field.key === 'traffic_gb' ? trafficLabel(picks.traffic_gb) : `${picks[field.key]} ${field.unit}` }}
+                  {{ field.key === 'traffic_gb' ? trafficLabel(picks.traffic_gb) : `${formatSpec(picks[field.key])} ${field.unit}` }}
                 </span>
               </div>
               <div class="flex items-center gap-2">
@@ -314,7 +336,7 @@ onMounted(async () => {
                 </Button>
               </div>
               <p class="text-muted-foreground text-xs">
-                {{ field.hint || `可选 ${cfg[field.key].min} - ${cfg[field.key].max} ${field.unit}，步长 ${rangeStep(field)}` }}
+                {{ field.hint || `可选 ${formatSpec(cfg[field.key].min)} - ${formatSpec(cfg[field.key].max)} ${field.unit}，步长 ${formatSpec(rangeStep(field))}` }}
               </p>
             </div>
           </div>

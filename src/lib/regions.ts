@@ -8,7 +8,7 @@ export interface RegionInfo {
 export const REGIONS: RegionInfo[] = [
   { code: 'cn', name: '中国大陆', flag: '🇨🇳' },
   { code: 'hk', name: '中国香港', flag: '🇭🇰' },
-  { code: 'tw', name: '中国台湾', flag: '🇨🇳' },
+  { code: 'tw', name: '中国台湾', flag: '🇹🇼' },
   { code: 'mo', name: '中国澳门', flag: '🇲🇴' },
   { code: 'jp', name: '日本', flag: '🇯🇵' },
   { code: 'kr', name: '韩国', flag: '🇰🇷' },
