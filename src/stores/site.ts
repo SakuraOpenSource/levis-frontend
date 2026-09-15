@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { siteApi } from '@/lib/endpoints'
-import type { Bootstrap, CaptchaCharset } from '@/lib/types'
+import type { Bootstrap, CaptchaCharset, HomeConfig } from '@/lib/types'
 
 export const useSiteStore = defineStore('site', () => {
   const installed = ref(false)
@@ -14,6 +14,8 @@ export const useSiteStore = defineStore('site', () => {
   const captchaLogin = ref(false)
   const captchaRegister = ref(false)
   const captchaCharset = ref<CaptchaCharset>('digit')
+  /** 公开主页配置：null 表示未启用（后端省略 home 字段），此时根路由回落到商店。 */
+  const home = ref<HomeConfig | null>(null)
 
   function apply(data: Bootstrap) {
     installed.value = data.installed
@@ -24,6 +26,7 @@ export const useSiteStore = defineStore('site', () => {
     captchaLogin.value = data.captcha?.login ?? false
     captchaRegister.value = data.captcha?.register ?? false
     captchaCharset.value = data.captcha?.charset ?? 'digit'
+    home.value = data.home ?? null
     loaded.value = true
     document.title = siteName.value
   }
@@ -52,6 +55,7 @@ export const useSiteStore = defineStore('site', () => {
     captchaLogin,
     captchaRegister,
     captchaCharset,
+    home,
     load,
     apply,
     markInstalled,

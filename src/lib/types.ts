@@ -330,6 +330,8 @@ export interface UpstreamHost {
  export interface HostVNC {
    available: boolean
    message: string
+   /** 上游页面控制台地址（魔方财务类上游）：有值时新窗口打开，不走站内 RFB 中继。 */
+   viewer_url?: string
  }
 
 export interface RenewResult {
@@ -579,13 +581,75 @@ export interface BootstrapCaptcha {
   charset: CaptchaCharset
 }
 
-export interface Bootstrap {
-  installed: boolean
-  site_name: string
-  site_description: string
-  /** 未安装时后端不返回该字段，因此是可选的。 */
-  captcha?: BootstrapCaptcha
-}
+ export interface Bootstrap {
+ installed: boolean
+ site_name: string
+ site_description: string
+ /** 未安装时后端不返回该字段，因此是可选的。 */
+ captcha?: BootstrapCaptcha
+ /** 主页未启用时后端省略该字段（null/undefined 都视为关闭）。 */
+ home?: HomeConfig | null
+ }
+
+ /** 主页上的行动按钮：text 为空时前端不渲染该按钮。 */
+ export interface HomeButton {
+ text: string
+ link: string
+ }
+
+ /** 主视觉下方的一条数据，如 { value: '99.9%', label: '服务可用性' }。 */
+ export interface HomeStat {
+ value: string
+ label: string
+ }
+
+ /** 主页特性卡片：icon 取 HOME_FEATURE_ICONS 中的 lucide 图标名。 */
+ export interface HomeFeature {
+ icon: string
+ title: string
+ desc: string
+ link: string
+ }
+
+ /** 公开主页的完整配置，与后端 service.HomeConfig 一致。 */
+ export interface HomeConfig {
+ enabled: boolean
+ badge: string
+ title: string
+ subtitle: string
+ description: string
+ primary_button: HomeButton
+ secondary_button: HomeButton
+ hero_image_url: string
+ stats: HomeStat[]
+ features: HomeFeature[]
+ show_products: boolean
+ }
+
+ /**
+ * 特性卡片可选的图标取值表（lucide 图标名），与后端
+ * service.HomeFeatureIcons 保持一致，改一边必须改另一边。
+ */
+ export const HOME_FEATURE_ICONS = [
+ 'zap',
+ 'rocket',
+ 'shield-check',
+ 'server',
+ 'cloud',
+ 'database',
+ 'cpu',
+ 'globe',
+ 'lock',
+ 'sparkles',
+ 'package',
+ 'credit-card',
+ ] as const
+
+ /** 管理端站点名称与简介的读写体。 */
+ export interface SiteSettings {
+ site_name: string
+ site_description: string
+ }
 
 export interface DatabaseConfig {
   driver: DatabaseDriver

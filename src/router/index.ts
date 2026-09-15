@@ -38,18 +38,18 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/RegisterView.vue'),
     meta: { guestOnly: true },
   },
-  {
-    path: '/',
-    component: () => import('@/layouts/SiteLayout.vue'),
-    children: [
-      { path: '', redirect: { name: 'shop' } },
-      { path: 'shop', name: 'shop', component: () => import('@/views/ShopView.vue') },
-      {
-        path: 'cart',
-        name: 'cart',
-        component: () => import('@/views/CartView.vue'),
-        meta: { requiresAuth: true },
-      },
+   {
+     path: '/',
+     component: () => import('@/layouts/SiteLayout.vue'),
+     children: [
+       { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
+       { path: 'shop', name: 'shop', component: () => import('@/views/ShopView.vue') },
+       {
+         path: 'cart',
+         name: 'cart',
+         component: () => import('@/views/CartView.vue'),
+         meta: { requiresAuth: true },
+       },
       {
         path: 'checkout/:id?',
         name: 'checkout',
@@ -252,7 +252,7 @@ router.beforeEach(async (to) => {
   }
   // 已安装后安装页不应再可达，否则会误导用户重复安装。
   if (to.meta.installPage) {
-    return { name: 'shop' }
+    return { name: 'home' }
   }
 
   const needsUser = to.meta.requiresAuth || to.meta.requiresAdmin || to.meta.guestOnly

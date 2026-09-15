@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Zap, ZapOff } from 'lucide-vue-next'
 import RFB from '@novnc/novnc'
 
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
@@ -295,6 +295,8 @@ const chartSeries = computed(() => {
 const vncTarget = ref<HTMLElement | null>(null)
 const vncAvailable = ref(false)
 const vncMessage = ref('')
+/** 上游页面控制台地址（魔方财务类上游）：有值时走外链，不建 RFB 连接。 */
+const vncViewerUrl = ref('')
 const vncChecking = ref(false)
 const vncConnecting = ref(false)
 const vncConnected = ref(false)
@@ -311,12 +313,20 @@ async function checkVnc() {
     const info = await serviceApi.vnc(item.value.id)
     vncAvailable.value = info.available
     vncMessage.value = info.message || ''
+    vncViewerUrl.value = info.viewer_url || ''
   } catch {
     vncAvailable.value = false
     vncMessage.value = ''
+    vncViewerUrl.value = ''
   } finally {
     vncChecking.value = false
   }
+}
+
+/** 页面控制台型上游（魔方财务）：新窗口打开上游 viewer 页，不走站内 RFB 中继。 */
+function openVncViewer() {
+  if (!vncViewerUrl.value) return
+  window.open(vncViewerUrl.value, '_blank', 'noopener')
 }
 
 function onVncConnect() {
@@ -735,36 +745,45 @@ onBeforeUnmount(() => {
         </div>
       </CardContent>
     </Card>
-    <Card v-if="item && canPower">
-      <CardContent class="space-y-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-medium">{{ t('services.vncTitle') }}</h2>
-          <div class="flex gap-2">
-            <Button
-              v-if="!vncConnected"
-              variant="outline"
-              size="sm"
-              :disabled="!vncAvailable || vncConnecting || vncChecking"
-              @click="connectVnc"
-            >
-              <Loader2 v-if="vncConnecting || vncChecking" class="animate-spin" />
-              {{ vncConnecting ? t('services.vncConnecting') : vncEverConnected ? t('services.vncReconnect') : t('services.vncOpen') }}
-            </Button>
-            <Button v-else variant="outline" size="sm" @click="disconnectVnc">
-              {{ t('services.vncDisconnect') }}
-            </Button>
-          </div>
-        </div>
-        <p class="text-muted-foreground text-xs">{{ t('services.vncHint') }}</p>
-        <p v-if="!vncAvailable" class="text-muted-foreground text-sm">
-          {{ vncChecking ? t('services.vncConnecting') : vncMessage || t('services.vncUnavailable') }}
-        </p>
-        <template v-else>
-          <div ref="vncTarget" class="h-[420px] w-full overflow-hidden rounded-lg border bg-black" />
-          <p v-if="vncConnected" class="text-xs text-emerald-600">{{ t('services.vncConnected') }}</p>
-        </template>
-      </CardContent>
-    </Card>
+     <Card v-if="item && canPower">
+       <CardContent class="space-y-3">
+         <div class="flex flex-wrap items-center justify-between gap-2">
+           <h2 class="text-sm font-medium">{{ t('services.vncTitle') }}</h2>
+           <div class="flex gap-2">
+             <Button v-if="vncViewerUrl" variant="default" size="sm" @click="openVncViewer">
+               <ExternalLink class="size-4" />
+               {{ t('services.vncOpenExternal') }}
+             </Button>
+             <template v-else>
+               <Button
+                 v-if="!vncConnected"
+                 variant="outline"
+                 size="sm"
+                 :disabled="!vncAvailable || vncConnecting || vncChecking"
+                 @click="connectVnc"
+               >
+                 <Loader2 v-if="vncConnecting || vncChecking" class="animate-spin" />
+                 {{ vncConnecting ? t('services.vncConnecting') : vncEverConnected ? t('services.vncReconnect') : t('services.vncOpen') }}
+               </Button>
+               <Button v-else variant="outline" size="sm" @click="disconnectVnc">
+                 {{ t('services.vncDisconnect') }}
+               </Button>
+             </template>
+           </div>
+         </div>
+         <p class="text-muted-foreground text-xs">{{ t('services.vncHint') }}</p>
+         <p v-if="!vncAvailable" class="text-muted-foreground text-sm">
+           {{ vncChecking ? t('services.vncConnecting') : vncMessage || t('services.vncUnavailable') }}
+         </p>
+         <template v-else-if="vncViewerUrl">
+           <p class="text-muted-foreground text-xs">{{ t('services.vncExternalHint') }}</p>
+         </template>
+         <template v-else>
+           <div ref="vncTarget" class="h-[420px] w-full overflow-hidden rounded-lg border bg-black" />
+           <p v-if="vncConnected" class="text-xs text-emerald-600">{{ t('services.vncConnected') }}</p>
+         </template>
+       </CardContent>
+     </Card>
 
     <Card v-if="item && canPower">
       <CardContent class="space-y-4">

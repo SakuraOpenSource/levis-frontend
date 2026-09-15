@@ -27,12 +27,15 @@ onMounted(async () => {
 <template>
   <header class="bg-background/80 sticky top-0 z-40 border-b backdrop-blur">
     <div class="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-      <RouterLink :to="{ name: 'shop' }" class="flex items-center gap-2 font-semibold">
+      <RouterLink :to="{ name: 'home' }" class="flex items-center gap-2 font-semibold">
         <Store class="size-5" />
         <span class="truncate">{{ site.siteName }}</span>
       </RouterLink>
 
       <nav class="ml-2 hidden items-center gap-1 sm:flex">
+         <Button v-if="site.home" variant="ghost" size="sm" as-child>
+           <RouterLink :to="{ name: 'home' }">{{ t('nav.home') }}</RouterLink>
+         </Button>
         <Button variant="ghost" size="sm" as-child>
           <RouterLink :to="{ name: 'shop' }">{{ t('nav.shop') }}</RouterLink>
         </Button>
