@@ -179,6 +179,8 @@ export interface Service extends Timestamps {
   price_cents: number
   next_due_at: string | null
   expires_at: string | null
+  /** 售后加购累计的额外流量配额（GB），结清流量包账单时由后端累加。 */
+  traffic_extra_gb: number
   upstream_plugin_id: string
   upstream_host_id: string
   /** 最近一次上游开通失败的原因，成功后由后端清空；为空表示无失败。 */
@@ -195,16 +197,17 @@ export interface InvoiceItem extends Timestamps {
   amount_cents: number
 }
 
-export interface Invoice extends Timestamps {
-  invoice_no: string
-  user_id: number
-  order_id: number | null
-  status: InvoiceStatus
-  total_cents: number
-  due_at: string | null
-  paid_at: string | null
-  items?: InvoiceItem[]
-}
+ export interface Invoice extends Timestamps {
+   invoice_no: string
+   user_id: number
+   order_id: number | null
+   service_id: number | null
+   status: InvoiceStatus
+   total_cents: number
+   due_at: string | null
+   paid_at: string | null
+   items?: InvoiceItem[]
+ }
 
 /**
  * 管理端账单详情：账单字段（含明细）平铺，附带关联的外部支付。

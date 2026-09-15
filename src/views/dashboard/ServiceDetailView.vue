@@ -25,11 +25,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { serviceApi, walletApi } from '@/lib/endpoints'
+import { catalogApi, serviceApi, walletApi } from '@/lib/endpoints'
 import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
 import type { HostMetrics, Invoice, OSImage, PowerAction, Service, UpstreamHost } from '@/lib/types'
 
@@ -92,6 +93,77 @@ async function onRenewPaid() {
     item.value = service
     walletBalance.value = wallet.balance_cents
     toast.success(t('services.renewed'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  }
+}
+/** 流量包加购：GB/TB 切换 + 数量 + 价格预览，账单复用 PayPanel（purpose="invoice"）。 */
+const trafficInvoice = ref<Invoice | null>(null)
+const creatingTraffic = ref(false)
+const trafficUnit = ref<'GB' | 'TB'>('GB')
+const trafficAmount = ref(100)
+const trafficPrice = ref<{ unitPrice: number; step: number } | null>(null)
+
+const canTraffic = computed(() => item.value?.status === 'active')
+
+/** 以 GB 为单位的加购量（TB 按 1TB=1024GB 换算），与后端校验口径一致。 */
+const trafficExtraGB = computed(
+  () => (Number(trafficAmount.value) || 0) * (trafficUnit.value === 'TB' ? 1024 : 1),
+)
+
+/** 价格预览：取自商品 provision_config.traffic_gb；无定价时显示兜底提示。 */
+const trafficPreviewCents = computed(() => {
+   if (!trafficPrice.value || trafficPrice.value.unitPrice <= 0) return null
+   const step = Math.max(trafficPrice.value.step, 1)
+  if (trafficExtraGB.value <= 0 || trafficExtraGB.value % step !== 0) return null
+   return (trafficExtraGB.value / step) * trafficPrice.value.unitPrice
+})
+ 
+/** 提交门禁：超范围必禁；已知单价但步长不对齐也禁（兜底定价未知时放行，后端计费）。 */
+const trafficSubmittable = computed(() => {
+  if (trafficExtraGB.value < 1 || trafficExtraGB.value > 10240) return false
+  if (trafficPrice.value && trafficPrice.value.unitPrice > 0 && trafficPreviewCents.value === null) return false
+  return true
+})
+async function loadTrafficPrice() {
+  trafficPrice.value = null
+  if (!item.value) return
+  try {
+    const product = await catalogApi.product(item.value.product_id)
+    const range = product.provision_config?.traffic_gb
+    if (range && (range.unit_price_cents ?? 0) > 0) {
+      trafficPrice.value = { unitPrice: range.unit_price_cents ?? 0, step: Math.max(range.step ?? 1, 1) }
+    }
+  } catch {
+    trafficPrice.value = null
+  }
+}
+
+/** 流量账单走统一收银台：先生成账单，再用 PayPanel（余额抵扣 + 在线支付）结算。 */
+async function startTraffic() {
+   if (!item.value || creatingTraffic.value || trafficInvoice.value || !trafficSubmittable.value) return
+  creatingTraffic.value = true
+  try {
+    trafficInvoice.value = await serviceApi.trafficInvoice(item.value.id, Number(trafficAmount.value) || 0, trafficUnit.value)
+    toast.success(t('services.trafficInvoiceDone'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    creatingTraffic.value = false
+  }
+}
+
+/** PayPanel 结算完成后重载服务与钱包（配额即服务状态），收起收银台。 */
+async function onTrafficPaid() {
+  trafficInvoice.value = null
+  try {
+    const [service, wallet] = await Promise.all([
+      serviceApi.get(Number(route.params.id)),
+      walletApi.overview(),
+    ])
+    item.value = service
+    walletBalance.value = wallet.balance_cents
+    toast.success(t('services.trafficPaid'))
   } catch (err) {
     toast.error(errorMessage(err))
   }
@@ -467,6 +539,7 @@ async function confirmReinstall() {
  }
 onMounted(async () => {
   await load()
+  await loadTrafficPrice()
   await loadUpstream()
   await loadMetrics()
   await checkVnc()
@@ -479,12 +552,15 @@ watch(() => route.params.id, async () => {
   teardownVnc()
   stopMetricsTimer()
   renewInvoice.value = null
+  trafficInvoice.value = null
+  trafficPrice.value = null
   metrics.value = null
   metricHistory.value = []
   upstream.value = null
   error.value = null
   loading.value = true
   await load()
+  await loadTrafficPrice()
   await loadUpstream()
   await loadMetrics()
   await checkVnc()
@@ -551,6 +627,49 @@ onBeforeUnmount(() => {
        @paid="onRenewPaid"
     />
 
+    <Card v-if="item && canTraffic">
+      <CardContent class="space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-medium">{{ t('services.trafficTitle') }}</h2>
+          <span class="text-muted-foreground text-xs">{{ t('services.trafficQuota') }}：{{ item.traffic_extra_gb ?? 0 }} GB</span>
+        </div>
+        <p class="text-muted-foreground text-xs">{{ t('services.trafficHint') }}</p>
+        <div v-if="!trafficInvoice" class="flex flex-wrap items-end gap-3">
+          <div class="flex gap-1">
+            <Button :variant="trafficUnit === 'GB' ? 'default' : 'outline'" size="sm" @click="trafficUnit = 'GB'">
+              {{ t('services.trafficUnitGB') }}
+            </Button>
+            <Button :variant="trafficUnit === 'TB' ? 'default' : 'outline'" size="sm" @click="trafficUnit = 'TB'">
+              {{ t('services.trafficUnitTB') }}
+            </Button>
+          </div>
+          <div class="space-y-1">
+            <Label for="traffic-amount">{{ t('services.trafficAmount') }}（{{ trafficUnit }}）</Label>
+            <Input id="traffic-amount" v-model.number="trafficAmount" type="number" min="1" class="w-32" />
+          </div>
+          <Button size="sm" :disabled="creatingTraffic || !trafficSubmittable" @click="startTraffic">
+            <Loader2 v-if="creatingTraffic" class="animate-spin" />
+            {{ creatingTraffic ? t('services.trafficCreating') : t('services.trafficCreate') }}
+          </Button>
+        </div>
+        <p v-if="!trafficInvoice && trafficPrice" class="text-muted-foreground text-xs">
+          {{ t('services.trafficPreview') }}：<Money v-if="trafficPreviewCents !== null" :cents="trafficPreviewCents" /><span v-else>-</span>
+          <template v-if="trafficExtraGB % Math.max(trafficPrice.step, 1) !== 0">
+            · {{ t('services.trafficStepHint', { step: trafficPrice.step }) }}
+          </template>
+        </p>
+        <p v-else-if="!trafficInvoice" class="text-muted-foreground text-xs">{{ t('services.trafficPriceUnknown') }}</p>
+        <PayPanel
+          v-if="trafficInvoice"
+          :total-cents="trafficInvoice.total_cents"
+          :balance-cents="walletBalance"
+          purpose="invoice"
+          :target-id="trafficInvoice.id"
+          @paid="onTrafficPaid"
+        />
+      </CardContent>
+    </Card>
+    <!-- 电源操作卡片 -->
     <Card v-if="item && canPower">
       <CardContent class="space-y-3">
         <h2 class="text-sm font-medium">{{ t('services.powerTitle') }}</h2>
@@ -772,6 +891,10 @@ onBeforeUnmount(() => {
           <div>
             <dt class="text-muted-foreground text-xs">{{ t('services.price') }}</dt>
             <dd class="mt-1 text-sm"><Money :cents="item.price_cents" /></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">{{ t('services.trafficQuota') }}</dt>
+            <dd class="mt-1 text-sm tabular">{{ item.traffic_extra_gb ?? 0 }} GB</dd>
           </div>
           <div>
             <dt class="text-muted-foreground text-xs">{{ t('services.nextDue') }}</dt>

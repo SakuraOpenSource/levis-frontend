@@ -314,6 +314,14 @@ export const orderApi = {
      const { data } = await http.post<Invoice>(`/services/${id}/renew-invoice`)
      return data
    },
+   /** 生成流量包账单：extra 为数量，unit 取 GB 或 TB（后端按 1TB=1024GB 换算）。 */
+   async trafficInvoice(id: number, extra: number, unit: 'GB' | 'TB' = 'GB') {
+     const { data } = await http.post<Invoice>(`/services/${id}/traffic-invoice`, {
+       extra_gb: extra,
+       unit,
+     })
+     return data
+   },
    /** 重试上游开通：仅 pending/failed 状态可重试，成功后服务变为 active。 */
    async retry(id: number) {
      const { data } = await http.post<Service>(`/services/${id}/retry`)
