@@ -60,11 +60,12 @@ interface ProvisionForm {
   disk_gb: { min: number; max: number; step: number; unit_price_cents: number }
   bandwidth_mbps: { min: number; max: number; step: number; unit_price_cents: number }
   traffic_gb: { min: number; max: number; step: number; unit_price_cents: number }
+  // 售后流量包单价（分/GB）：固定模式商品的流量包定价入口，模式无关。
+  traffic_price_cents: number
 }
 
-/** 弹性配置编辑器的资源行元数据。 */
 /** 弹性配置编辑器的资源行元数据。CPU 支持小数核数（下限 0.1、可按 0.05 微调）。 */
-const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode'>; label: string; unit: string; min: number; inputStep: string }[] = [
+const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents'>; label: string; unit: string; min: number; inputStep: string }[] = [
   { key: 'cpu', label: 'CPU', unit: '核', min: 0.1, inputStep: '0.05' },
   { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, inputStep: '1' },
   { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, inputStep: '1' },
@@ -81,6 +82,7 @@ function emptyProvision(): ProvisionForm {
     disk_gb: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
     bandwidth_mbps: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
     traffic_gb: { min: 0, max: 0, step: 1, unit_price_cents: 0 },
+    traffic_price_cents: 0,
   }
 }
 
@@ -262,6 +264,7 @@ function openEdit(item: Product) {
       provision[field.key].step = range?.step ?? 1
       provision[field.key].unit_price_cents = range?.unit_price_cents ?? 0
     }
+    provision.traffic_price_cents = item.provision_config.traffic_price_cents ?? 0
   } else {
     Object.assign(provision, emptyProvision())
   }
@@ -483,7 +486,7 @@ async function syncInfo(item: Product) {
 
 /** 把编辑态整理成后端开通配置；流量统一按 GB 保存。 */
 function buildProvisionConfig() {
-  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode'>) => {
+  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents'>) => {
     const min = provision[key].min
     // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值。
     const max = provision.mode === 'fixed' ? min : provision[key].max
@@ -501,6 +504,7 @@ function buildProvisionConfig() {
     memory_mb: range('memory_mb'),
     disk_gb: range('disk_gb'),
     bandwidth_mbps: range('bandwidth_mbps'),
+    traffic_price_cents: Math.max(provision.traffic_price_cents, 0),
     traffic_gb: range('traffic_gb'),
   }
 }
@@ -799,6 +803,22 @@ function pickInterface(interfaceId: string) {
                     :aria-label="`${field.label} 每步加价（分）`"
                   />
                   <span class="text-muted-foreground text-xs">分</span>
+                </div>
+                <div
+                  v-if="provision.mode === 'fixed' && field.key === 'traffic_gb'"
+                  class="flex flex-wrap items-center gap-2 pl-[4.5rem]"
+                >
+                  <Label class="text-muted-foreground text-xs" for="provision-traffic-price">流量包单价</Label>
+                  <Input
+                    id="provision-traffic-price"
+                    v-model.number="provision.traffic_price_cents"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-28"
+                    aria-label="流量包单价（分/GB）"
+                  />
+                  <span class="text-muted-foreground text-xs">分 / GB，售后加购流量按此计费，0 表示未定价</span>
                 </div>
               </div>
               <p v-if="provision.mode === 'elastic'" class="text-muted-foreground text-xs">

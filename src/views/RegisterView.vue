@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { Loader2 } from 'lucide-vue-next'
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/lib/api'
+import { emailApi } from '@/lib/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
 
@@ -19,11 +20,52 @@ const router = useRouter()
 const auth = useAuthStore()
 const site = useSiteStore()
 
-const form = reactive({ username: '', email: '', password: '', confirm: '' })
+const form = reactive({ username: '', email: '', password: '', confirm: '', emailCode: '' })
 const captcha = reactive({ id: '', code: '' })
 const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
 const submitting = ref(false)
+const codeSending = ref(false)
+const codeCooldown = ref(0)
+const codeSent = ref(false)
+let cooldownTimer: ReturnType<typeof setInterval> | null = null
+
+/** 站点开启注册邮箱验证码时展示发码 + 输入框。 */
+const emailCodeRequired = () => site.emailCodeRegister
+
+function startCooldown(seconds: number) {
+  codeCooldown.value = seconds
+  if (cooldownTimer) clearInterval(cooldownTimer)
+  cooldownTimer = setInterval(() => {
+    codeCooldown.value--
+    if (codeCooldown.value <= 0 && cooldownTimer) {
+      clearInterval(cooldownTimer)
+      cooldownTimer = null
+    }
+  }, 1000)
+}
+
+onBeforeUnmount(() => {
+  if (cooldownTimer) clearInterval(cooldownTimer)
+})
+
+async function sendCode() {
+  error.value = null
+  if (!form.email.trim()) {
+    error.value = t('auth.emailRequired')
+    return
+  }
+  codeSending.value = true
+  try {
+    await emailApi.sendCode('register', form.email.trim())
+    codeSent.value = true
+    startCooldown(60)
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    codeSending.value = false
+  }
+}
 
 async function submit() {
   error.value = null
@@ -39,6 +81,10 @@ async function submit() {
     error.value = t('auth.captchaRequired')
     return
   }
+  if (emailCodeRequired() && !form.emailCode.trim()) {
+    error.value = t('auth.emailCodeRequired')
+    return
+  }
   submitting.value = true
   try {
     // 后端注册接口固定 role=user，前端也不传任何角色字段。
@@ -46,6 +92,7 @@ async function submit() {
       username: form.username.trim(),
       email: form.email.trim(),
       password: form.password,
+      ...(emailCodeRequired() ? { email_code: form.emailCode.trim() } : {}),
       ...(site.captchaRegister
         ? { captcha_id: captcha.id, captcha_code: captcha.code.trim() }
         : {}),
@@ -71,6 +118,7 @@ async function submit() {
       <CardContent>
         <form class="space-y-4" @submit.prevent="submit">
           <ErrorAlert :message="error" />
+          <p v-if="codeSent" class="text-xs text-green-600">{{ t('auth.emailCodeSent') }}</p>
 
           <div class="space-y-2">
             <Label for="username">{{ t('auth.username') }}</Label>
@@ -81,6 +129,36 @@ async function submit() {
           <div class="space-y-2">
             <Label for="email">{{ t('auth.email') }}</Label>
             <Input id="email" v-model="form.email" type="email" autocomplete="email" required />
+          </div>
+
+          <div v-if="emailCodeRequired()" class="space-y-2">
+            <Label for="email-code">{{ t('auth.emailCode') }}</Label>
+            <div class="flex gap-2">
+              <Input
+                id="email-code"
+                v-model="form.emailCode"
+                inputmode="numeric"
+                maxlength="6"
+                class="flex-1"
+                required
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                class="shrink-0"
+                :disabled="codeSending || codeCooldown > 0"
+                @click="sendCode"
+              >
+                <Loader2 v-if="codeSending" class="h-3 w-3 animate-spin" />
+                {{
+                  codeCooldown > 0
+                    ? t('auth.emailCodeCooldown', { n: codeCooldown })
+                    : t('auth.emailCodeSend')
+                }}
+              </Button>
+            </div>
+            <p class="text-muted-foreground text-xs">{{ t('auth.emailCodeHint') }}</p>
           </div>
 
           <div class="space-y-2">

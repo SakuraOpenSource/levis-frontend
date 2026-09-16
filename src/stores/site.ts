@@ -14,6 +14,9 @@ export const useSiteStore = defineStore('site', () => {
   const captchaLogin = ref(false)
   const captchaRegister = ref(false)
   const captchaCharset = ref<CaptchaCharset>('digit')
+  /** 注册/登录页是否要求邮箱验证码。 */
+  const emailCodeRegister = ref(false)
+  const emailCodeLogin = ref(false)
   /** 公开主页配置：null 表示未启用（后端省略 home 字段），此时根路由回落到商店。 */
   const home = ref<HomeConfig | null>(null)
 
@@ -26,6 +29,8 @@ export const useSiteStore = defineStore('site', () => {
     captchaLogin.value = data.captcha?.login ?? false
     captchaRegister.value = data.captcha?.register ?? false
     captchaCharset.value = data.captcha?.charset ?? 'digit'
+    emailCodeRegister.value = data.email_code?.register ?? false
+    emailCodeLogin.value = data.email_code?.login ?? false
     home.value = data.home ?? null
     loaded.value = true
     document.title = siteName.value
@@ -55,7 +60,9 @@ export const useSiteStore = defineStore('site', () => {
     captchaLogin,
     captchaRegister,
     captchaCharset,
+    emailCodeRegister,
     home,
+    emailCodeLogin,
     load,
     apply,
     markInstalled,

@@ -12,11 +12,12 @@ import { http, postForm } from './api'
  CaptchaChallenge,
  CaptchaSettings,
  CartView,
- Category,
- CategoryInput,
- CreateUserInput,
- DatabaseConfig,
- HomeConfig,
+  Category,
+  CategoryInput,
+  CreateUserInput,
+  DatabaseConfig,
+  EmailSettings,
+  HomeConfig,
  InstallRequest,
  Invoice,
  KYCExternalStart,
@@ -121,6 +122,14 @@ export const captchaApi = {
   },
 }
 
+/** 邮箱验证码：注册页发码。登录码随登录票据签发，不走此接口。 */
+export const emailApi = {
+  async sendCode(scene: 'register', email: string) {
+    const { data } = await http.post<{ ok: boolean }>('/email/code', { scene, email })
+    return data
+  },
+}
+
 /** 带验证码的表单额外要提交的字段。 */
 export interface CaptchaAnswer {
   captcha_id?: string
@@ -130,17 +139,28 @@ export interface CaptchaAnswer {
 /** 认证与个人资料。 */
 export const authApi = {
   async register(
-    payload: { username: string; email: string; password: string } & CaptchaAnswer,
+    payload: { username: string; email: string; password: string; email_code?: string } & CaptchaAnswer,
   ) {
     const { data } = await http.post<{ user: User }>('/auth/register', payload)
     return data.user
   },
   async login(identifier: string, password: string, captcha: CaptchaAnswer = {}) {
-    const { data } = await http.post<{ user: User }>('/auth/login', {
-      identifier,
-      password,
-      ...captcha,
-    })
+    const { data } = await http.post<{ user?: User; need_email_code?: boolean; ticket?: string; masked_email?: string }>(
+      '/auth/login',
+      { identifier, password, ...captcha },
+    )
+    if (data.need_email_code || !data.user) {
+      throw Object.assign(new Error('need_email_code'), {
+        needEmailCode: true as const,
+        ticket: data.ticket ?? '',
+        maskedEmail: data.masked_email ?? '',
+      })
+    }
+    return data.user
+  },
+  /** 登录二次校验：票据 + 邮箱验证码换会话。 */
+  async loginEmailCode(ticket: string, code: string) {
+    const { data } = await http.post<{ user: User }>('/auth/login/email', { ticket, code })
     return data.user
   },
   async logout() {
@@ -745,6 +765,19 @@ export const adminApi = {
   },
   async updateKYCSettings(mode: string) {
     const { data } = await http.put<{ mode: string }>('/admin/settings/kyc', { mode })
+    return data
+  },
+  /** SMTP 邮件配置：密码只写不读（has_password 表示已配置）。 */
+  async emailSettings() {
+    const { data } = await http.get<EmailSettings>('/admin/settings/email')
+    return data
+  },
+  async updateEmailSettings(payload: EmailSettings & { smtp_password?: string }) {
+    const { data } = await http.put<EmailSettings>('/admin/settings/email', payload)
+    return data
+  },
+  async emailTest(email: string) {
+    const { data } = await http.post<{ ok: boolean }>('/admin/settings/email/test', { email })
     return data
   },
   async tickets(query: PageQuery & { status?: TicketStatus } = {}) {

@@ -66,6 +66,21 @@ const siteForm = reactive({
   trafficPrice: '',
 })
 
+/** SMTP 邮件与邮箱验证码开关的编辑态。 */
+const emailForm = reactive({
+  host: '',
+  port: '465',
+  ssl: true,
+  username: '',
+  from: '',
+  password: '',
+  hasPassword: false,
+  registerCode: false,
+  loginCode: false,
+})
+const emailTestTo = ref('')
+const emailTesting = ref(false)
+
 /** 公开主页的编辑态，结构与后端 HomeConfig 对齐，保存时整体下发。 */
 const homeForm = reactive({
   enabled: false,
@@ -125,11 +140,12 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const [cfg, kyc, siteCfg, homeCfg] = await Promise.all([
+    const [cfg, kyc, siteCfg, homeCfg, emailCfg] = await Promise.all([
       adminApi.captchaSettings(),
       adminApi.kycSettings(),
       adminApi.siteSettings(),
       adminApi.homeConfig(),
+      adminApi.emailSettings(),
     ])
     form.loginEnabled = cfg.login_enabled
     form.registerEnabled = cfg.register_enabled
@@ -147,7 +163,15 @@ async function load() {
     siteForm.trafficPrice = siteCfg.traffic_price_per_gb_cents
       ? (siteCfg.traffic_price_per_gb_cents / 100).toFixed(2)
       : ''
-    homeForm.enabled = homeCfg.enabled
+    emailForm.host = emailCfg.smtp_host
+    emailForm.port = String(emailCfg.smtp_port || 465)
+    emailForm.ssl = emailCfg.smtp_ssl
+    emailForm.username = emailCfg.smtp_username
+    emailForm.from = emailCfg.smtp_from
+    emailForm.password = ''
+    emailForm.hasPassword = emailCfg.has_password
+    emailForm.registerCode = emailCfg.register_code_enabled
+    emailForm.loginCode = emailCfg.login_code_enabled
     homeForm.badge = homeCfg.badge
     homeForm.title = homeCfg.title
     homeForm.subtitle = homeCfg.subtitle
@@ -189,6 +213,18 @@ async function save() {
         site_description: siteForm.description,
         traffic_price_per_gb_cents: yuanToFen(siteForm.trafficPrice),
       }),
+      adminApi.updateEmailSettings({
+        smtp_host: emailForm.host,
+        smtp_port: Number(emailForm.port) || 465,
+        smtp_ssl: emailForm.ssl,
+        smtp_username: emailForm.username,
+        smtp_from: emailForm.from,
+        has_password: emailForm.hasPassword,
+        register_code_enabled: emailForm.registerCode,
+        login_code_enabled: emailForm.loginCode,
+        // 留空表示保留原密码。
+        smtp_password: emailForm.password || undefined,
+      }),
       adminApi.updateHomeConfig({
         enabled: homeForm.enabled,
         badge: homeForm.badge,
@@ -216,6 +252,20 @@ async function save() {
 }
 
 onMounted(load)
+
+/** 发送测试邮件：配置先行保存才有意义，因此只在保存成功后可用。 */
+async function sendEmailTest() {
+  if (!emailTestTo.value.trim()) return
+  emailTesting.value = true
+  try {
+    await adminApi.emailTest(emailTestTo.value.trim())
+    toast.success(t('admin.emailTestSent'))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    emailTesting.value = false
+  }
+}
 </script>
 
 <template>
@@ -258,6 +308,68 @@ onMounted(load)
             </div>
             <p class="text-muted-foreground text-xs">{{ t('admin.trafficPricePerGBHint') }}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('admin.emailTitle') }}</CardTitle>
+          <CardDescription>{{ t('admin.emailSubtitle') }}</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-2">
+              <Label for="email-host">{{ t('admin.smtpHost') }}</Label>
+              <Input id="email-host" v-model="emailForm.host" placeholder="smtp.example.com" />
+            </div>
+            <div class="space-y-2">
+              <Label for="email-port">{{ t('admin.smtpPort') }}</Label>
+              <Input id="email-port" v-model="emailForm.port" type="number" min="1" max="65535" />
+            </div>
+            <div class="space-y-2">
+              <Label for="email-username">{{ t('admin.smtpUsername') }}</Label>
+              <Input id="email-username" v-model="emailForm.username" autocomplete="off" />
+            </div>
+            <div class="space-y-2">
+              <Label for="email-password">{{ t('admin.smtpPassword') }}</Label>
+              <Input
+                id="email-password"
+                v-model="emailForm.password"
+                type="password"
+                autocomplete="new-password"
+                :placeholder="emailForm.hasPassword ? t('admin.smtpPasswordSaved') : ''"
+              />
+            </div>
+            <div class="space-y-2 sm:col-span-2">
+              <Label for="email-from">{{ t('admin.smtpFrom') }}</Label>
+              <Input id="email-from" v-model="emailForm.from" placeholder="noreply@example.com" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between rounded-md border p-3">
+            <div class="space-y-1">
+              <div class="text-sm font-medium">{{ t('admin.emailCodeRegister') }}</div>
+              <div class="text-muted-foreground text-xs">{{ t('admin.emailCodeRegisterHint') }}</div>
+            </div>
+            <Switch v-model:checked="emailForm.registerCode" />
+          </div>
+          <div class="flex items-center justify-between rounded-md border p-3">
+            <div class="space-y-1">
+              <div class="text-sm font-medium">{{ t('admin.emailCodeLogin') }}</div>
+              <div class="text-muted-foreground text-xs">{{ t('admin.emailCodeLoginHint') }}</div>
+            </div>
+            <Switch v-model:checked="emailForm.loginCode" />
+          </div>
+          <div class="flex flex-wrap items-end gap-2">
+            <div class="space-y-2">
+              <Label for="email-test-to">{{ t('admin.emailTestTo') }}</Label>
+              <Input id="email-test-to" v-model="emailTestTo" type="email" class="w-64" />
+            </div>
+            <Button type="button" variant="outline" size="sm" :disabled="emailTesting" @click="sendEmailTest">
+              <Loader2 v-if="emailTesting" class="mr-1 h-3 w-3 animate-spin" />
+              {{ t('admin.emailTestSend') }}
+            </Button>
+          </div>
+          <p class="text-muted-foreground text-xs">{{ t('admin.emailTestHint') }}</p>
         </CardContent>
       </Card>
 

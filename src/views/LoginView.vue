@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/lib/api'
+import { authApi } from '@/lib/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { useSiteStore } from '@/stores/site'
@@ -27,6 +28,21 @@ const captcha = reactive({ id: '', code: '' })
 const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
 const submitting = ref(false)
+
+/** 登录邮箱验证码的第二步状态：票据与掩码邮箱由首次登录响应给出。 */
+const emailStep = reactive({ active: false, ticket: '', maskedEmail: '' })
+const emailCode = ref('')
+
+/** 登录成功后的统一落地：恢复购物车并按 redirect/角色跳转。 */
+async function finishLogin(user: { role: string }) {
+  cart.load().catch(() => {})
+  const redirect = route.query.redirect
+  if (typeof redirect === 'string' && redirect.startsWith('/')) {
+    await router.replace(redirect)
+    return
+  }
+  await router.replace({ name: user.role === 'admin' ? 'admin' : 'dashboard' })
+}
 
 async function submit() {
   error.value = null
@@ -45,19 +61,39 @@ async function submit() {
       form.password,
       site.captchaLogin ? { captcha_id: captcha.id, captcha_code: captcha.code.trim() } : {},
     )
-    cart.load().catch(() => {})
-
-    // 带 redirect 时优先回原目标；否则按角色决定落地页。
-    const redirect = route.query.redirect
-    if (typeof redirect === 'string' && redirect.startsWith('/')) {
-      await router.replace(redirect)
-      return
+    await finishLogin(user)
+  } catch (err) {
+    // 站点开启登录邮箱验证码时，密码正确也会以 needEmailCode「错误」返回。
+    if (err && typeof err === 'object' && (err as { needEmailCode?: boolean }).needEmailCode) {
+      const info = err as { ticket?: string; maskedEmail?: string }
+      emailStep.active = true
+      emailStep.ticket = info.ticket ?? ''
+      emailStep.maskedEmail = info.maskedEmail ?? ''
+      emailCode.value = ''
+    } else {
+      error.value = errorMessage(err)
+      // 验证码是一次性的，哪怕这次是密码错也已经作废，必须换一张。
+      captchaField.value?.refresh()
     }
-    await router.replace({ name: user.role === 'admin' ? 'admin' : 'dashboard' })
+  } finally {
+    submitting.value = false
+  }
+}
+
+/** 第二步：票据 + 邮箱验证码换会话。 */
+async function submitEmailCode() {
+  error.value = null
+  if (!emailCode.value.trim()) {
+    error.value = t('auth.emailCodeRequired')
+    return
+  }
+  submitting.value = true
+  try {
+    const user = await authApi.loginEmailCode(emailStep.ticket, emailCode.value.trim())
+    await auth.restore() // 会话 cookie 已就位，把本地状态恢复起来
+    await finishLogin(user)
   } catch (err) {
     error.value = errorMessage(err)
-    // 验证码是一次性的，哪怕这次是密码错也已经作废，必须换一张。
-    captchaField.value?.refresh()
   } finally {
     submitting.value = false
   }
@@ -72,7 +108,40 @@ async function submit() {
         <CardDescription>{{ t('auth.loginSubtitle') }}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form class="space-y-4" @submit.prevent="submit">
+        <!-- 第二步：邮箱验证码 -->
+        <form v-if="emailStep.active" class="space-y-4" @submit.prevent="submitEmailCode">
+          <ErrorAlert :message="error" />
+          <p class="text-muted-foreground text-sm">
+            {{ t('auth.emailCodeLoginSent', { email: emailStep.maskedEmail }) }}
+          </p>
+          <div class="space-y-2">
+            <Label for="login-email-code">{{ t('auth.emailCode') }}</Label>
+            <Input
+              id="login-email-code"
+              v-model="emailCode"
+              inputmode="numeric"
+              maxlength="6"
+              autofocus
+              required
+            />
+          </div>
+          <Button type="submit" class="w-full" :disabled="submitting">
+            <Loader2 v-if="submitting" class="animate-spin" />
+            {{ t('auth.submitLogin') }}
+          </Button>
+          <p class="text-center text-sm">
+            <button
+              type="button"
+              class="text-primary hover:underline"
+              @click="emailStep.active = false"
+            >
+              {{ t('auth.backToLogin') }}
+            </button>
+          </p>
+        </form>
+
+        <!-- 第一步：账号密码 -->
+        <form v-else class="space-y-4" @submit.prevent="submit">
           <ErrorAlert :message="error" />
 
           <div class="space-y-2">

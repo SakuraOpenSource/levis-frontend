@@ -134,6 +134,9 @@ async function loadTrafficPrice() {
     const range = product.provision_config?.traffic_gb
     if (range && (range.unit_price_cents ?? 0) > 0) {
       trafficPrice.value = { unitPrice: range.unit_price_cents ?? 0, step: Math.max(range.step ?? 1, 1) }
+    } else if ((product.provision_config?.traffic_price_cents ?? 0) > 0) {
+      // 固定模式商品的流量包单价：步长固定 1 GB。
+      trafficPrice.value = { unitPrice: product.provision_config!.traffic_price_cents!, step: 1 }
     }
   } catch {
     trafficPrice.value = null

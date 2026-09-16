@@ -107,6 +107,8 @@ export interface ProvisionConfig {
   disk_gb: SpecRange
   bandwidth_mbps: SpecRange
   traffic_gb: SpecRange
+  /** 售后流量包单价（分/GB）；固定模式商品的定价入口，0/缺省表示未定价。 */
+  traffic_price_cents?: number
 }
 
 /** 「接口管理」里的一条上游接口。 */
@@ -597,15 +599,23 @@ export interface BootstrapCaptcha {
   charset: CaptchaCharset
 }
 
- export interface Bootstrap {
- installed: boolean
- site_name: string
- site_description: string
- /** 未安装时后端不返回该字段，因此是可选的。 */
- captcha?: BootstrapCaptcha
- /** 主页未启用时后端省略该字段（null/undefined 都视为关闭）。 */
- home?: HomeConfig | null
- }
+/** bootstrap 里的邮箱验证码场景开关。 */
+export interface BootstrapEmailCode {
+  login: boolean
+  register: boolean
+}
+
+export interface Bootstrap {
+  installed: boolean
+  site_name: string
+  site_description: string
+  /** 未安装时后端不返回该字段，因此是可选的。 */
+  captcha?: BootstrapCaptcha
+  /** 邮箱验证码场景开关；未安装时同样缺省。 */
+  email_code?: BootstrapEmailCode
+  /** 主页未启用时后端省略该字段（null/undefined 都视为关闭）。 */
+  home?: HomeConfig | null
+}
 
  /** 主页上的行动按钮：text 为空时前端不渲染该按钮。 */
  export interface HomeButton {
@@ -667,6 +677,18 @@ export interface SiteSettings {
   site_description: string
   /** 流量包兜底单价（分/GB）；0 表示未定价，用户将无法加购流量。 */
   traffic_price_per_gb_cents?: number
+}
+
+/** 管理端 SMTP 邮件配置的读写体；密码只写不读（has_password 表示已配置）。 */
+export interface EmailSettings {
+  smtp_host: string
+  smtp_port: number
+  smtp_ssl: boolean
+  smtp_username: string
+  smtp_from: string
+  has_password: boolean
+  register_code_enabled: boolean
+  login_code_enabled: boolean
 }
 
 export interface DatabaseConfig {
