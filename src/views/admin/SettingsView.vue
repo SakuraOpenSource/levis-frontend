@@ -58,10 +58,12 @@ const form = reactive({
 })
 const kycOptions = ref<KYCPluginOption[]>([])
 
-/** 站点名称与简介：安装后唯一可改的地方。 */
+/** 站点名称、简介与流量包兜底单价：安装后唯一可改的地方。 */
 const siteForm = reactive({
   name: '',
   description: '',
+  // 流量包兜底单价按元输入，保存时换算成分；空串表示未定价。
+  trafficPrice: '',
 })
 
 /** 公开主页的编辑态，结构与后端 HomeConfig 对齐，保存时整体下发。 */
@@ -89,6 +91,13 @@ const lengthOptions = computed(() => {
 
 /** 两个开关都关掉时，字符集与位数存了也用不上，界面上明说一句。 */
 const allDisabled = computed(() => !form.loginEnabled && !form.registerEnabled)
+
+/** 元字符串转分：空串、非法输入或非正数都归 0（未定价）。 */
+function yuanToFen(input: string): number {
+  const n = Number.parseFloat(input)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.round(n * 100)
+}
 
 function charsetLabel(charset: CaptchaCharset) {
   return t(`admin.captchaCharset_${charset}`)
@@ -134,6 +143,10 @@ async function load() {
     kycOptions.value = kyc.plugins
     siteForm.name = siteCfg.site_name
     siteForm.description = siteCfg.site_description
+    // 分转元展示；未定价（0）显示为空串。
+    siteForm.trafficPrice = siteCfg.traffic_price_per_gb_cents
+      ? (siteCfg.traffic_price_per_gb_cents / 100).toFixed(2)
+      : ''
     homeForm.enabled = homeCfg.enabled
     homeForm.badge = homeCfg.badge
     homeForm.title = homeCfg.title
@@ -174,6 +187,7 @@ async function save() {
       adminApi.updateSiteSettings({
         site_name: siteForm.name,
         site_description: siteForm.description,
+        traffic_price_per_gb_cents: yuanToFen(siteForm.trafficPrice),
       }),
       adminApi.updateHomeConfig({
         enabled: homeForm.enabled,
@@ -228,6 +242,21 @@ onMounted(load)
             <Label for="site-description">{{ t('admin.siteDescription') }}</Label>
             <Textarea id="site-description" v-model="siteForm.description" rows="3" maxlength="500" />
             <p class="text-muted-foreground text-xs">{{ t('admin.siteDescriptionHint') }}</p>
+          </div>
+          <div class="max-w-sm space-y-2">
+            <Label for="site-traffic-price">{{ t('admin.trafficPricePerGB') }}</Label>
+            <div class="flex items-center gap-2">
+              <Input
+                id="site-traffic-price"
+                v-model="siteForm.trafficPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+              <span class="text-muted-foreground shrink-0 text-xs">元 / GB</span>
+            </div>
+            <p class="text-muted-foreground text-xs">{{ t('admin.trafficPricePerGBHint') }}</p>
           </div>
         </CardContent>
       </Card>

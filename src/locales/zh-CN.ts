@@ -721,6 +721,8 @@ export default {
     siteName: '站点名称',
     siteDescription: '站点简介',
     siteDescriptionHint: '显示在主页与浏览器标题附近，留空则不展示',
+    trafficPricePerGB: '流量包兜底单价',
+    trafficPricePerGBHint: '商品未单独给流量定价时，售后加购流量按此价计费；留空或 0 表示未定价，用户将无法加购流量',
     homeTitle: '公开主页',
     homeSubtitle: '自定义根路径 / 的落地页，关闭后访客直接看到商店',
     homeEnabled: '启用公开主页',

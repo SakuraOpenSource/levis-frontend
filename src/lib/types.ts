@@ -661,11 +661,13 @@ export interface BootstrapCaptcha {
  'credit-card',
  ] as const
 
- /** 管理端站点名称与简介的读写体。 */
- export interface SiteSettings {
- site_name: string
- site_description: string
- }
+/** 管理端站点设置的读写体。 */
+export interface SiteSettings {
+  site_name: string
+  site_description: string
+  /** 流量包兜底单价（分/GB）；0 表示未定价，用户将无法加购流量。 */
+  traffic_price_per_gb_cents?: number
+}
 
 export interface DatabaseConfig {
   driver: DatabaseDriver
