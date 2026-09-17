@@ -1,31 +1,31 @@
 # levis-frontend
 
-[Levis](https://github.com/SakuraOpenSource/levis) 前端。
+The web UI of [Levis](https://github.com/SakuraOpenSource/levis), a lightweight business management system. Built as a single-page application and normally delivered embedded inside the Levis single binary.
 
-## 技术栈
+## Tech stack
 
 - Vite 8 + Vue 3 + TypeScript
-- [shadcn-vue](https://www.shadcn-vue.com/) 风格组件（`new-york` / `neutral`） + [reka-ui](https://reka-ui.com/)
+- [shadcn-vue](https://www.shadcn-vue.com/)-style components (`new-york` / `neutral`) built on [reka-ui](https://reka-ui.com/)
 - Tailwind CSS v4
-- vue-router（history 模式）、pinia、axios、vue-i18n（中文为默认语言）
+- vue-router (history mode), pinia, axios, vue-i18n (Chinese is the default locale)
 
-## 开发
+## Development
 
 ```bash
 pnpm install
 pnpm dev        # http://localhost:5173
 ```
 
-需同时运行后端。
+The Levis backend must be running at the same time (`make dev-backend` in the backend repository); the dev server proxies `/api` to it.
 
 ```bash
-pnpm build      # vue-tsc -b && vite build，产物在 dist/
+pnpm build      # vue-tsc -b && vite build, output in dist/
 pnpm preview
 ```
 
-在后端执行 `make all` 会自动打包本项目编译产物至后端编译产物。
+Running `make build` in the backend repository builds this project and embeds the output into the backend binary.
 
-## 目录结构
+## Directory structure
 
 ```
 src/
@@ -46,19 +46,19 @@ src/
 └── views/
 ```
 
-## 页面
+## Pages
 
-| 路由 | 说明 |
+| Route | Description |
 |---|---|
-| `/install` | 安装页面 |
-| `/login` `/register` | 登录/注册页面 |
-| `/shop` `/cart` `/checkout/:id?` | 商店 |
-| `/dashboard` | 用户中心主页 |
-| `/dashboard/services` `/dashboard/services/:id` | 已购买的产品 |
-| `/dashboard/wallet` `/dashboard/invoices` `/dashboard/invoices/:id` | 钱包与账单 |
-| `/dashboard/security` | 安全中心 |
-| `/admin` `/admin/users` `/admin/categories` `/admin/products` | 管理后台 |
+| `/install` | Installer |
+| `/login` `/register` | Authentication (optional e-mail verification codes) |
+| `/shop` `/cart` `/checkout/:id?` | Store and unified checkout |
+| `/dashboard` | User center |
+| `/dashboard/services` `/dashboard/services/:id` | Purchased services (NAT, metrics, VNC console) |
+| `/dashboard/wallet` `/dashboard/invoices` `/dashboard/invoices/:id` | Wallet and invoices |
+| `/dashboard/tickets` `/dashboard/security` | Tickets and security center |
+| `/admin` | Admin panel (users, products, finance, services, plugins, settings) |
 
 ## License
 
-本项目遵循 GPL-v3 开源协议。
+This project is licensed under GPL-v3.
