@@ -684,6 +684,8 @@ export interface EmailSettings {
   smtp_host: string
   smtp_port: number
   smtp_ssl: boolean
+  /** 加密方式：auto / ssl / starttls / none */
+  smtp_encryption: string
   smtp_username: string
   smtp_from: string
   has_password: boolean

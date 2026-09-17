@@ -71,6 +71,8 @@ const emailForm = reactive({
   host: '',
   port: '465',
   ssl: true,
+  // 加密方式：auto / ssl / starttls / none。
+  encryption: 'auto',
   username: '',
   from: '',
   password: '',
@@ -166,6 +168,7 @@ async function load() {
     emailForm.host = emailCfg.smtp_host
     emailForm.port = String(emailCfg.smtp_port || 465)
     emailForm.ssl = emailCfg.smtp_ssl
+    emailForm.encryption = emailCfg.smtp_encryption || 'auto'
     emailForm.username = emailCfg.smtp_username
     emailForm.from = emailCfg.smtp_from
     emailForm.password = ''
@@ -217,6 +220,7 @@ async function save() {
         smtp_host: emailForm.host,
         smtp_port: Number(emailForm.port) || 465,
         smtp_ssl: emailForm.ssl,
+        smtp_encryption: emailForm.encryption,
         smtp_username: emailForm.username,
         smtp_from: emailForm.from,
         has_password: emailForm.hasPassword,
@@ -325,6 +329,21 @@ async function sendEmailTest() {
             <div class="space-y-2">
               <Label for="email-port">{{ t('admin.smtpPort') }}</Label>
               <Input id="email-port" v-model="emailForm.port" type="number" min="1" max="65535" />
+            </div>
+            <div class="space-y-2">
+              <Label for="email-encryption">{{ t('admin.smtpEncryption') }}</Label>
+              <Select v-model="emailForm.encryption">
+                <SelectTrigger id="email-encryption" class="w-full">
+                  <SelectValue placeholder="auto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">{{ t('admin.smtpEncryptionAuto') }}</SelectItem>
+                  <SelectItem value="ssl">{{ t('admin.smtpEncryptionSSL') }}</SelectItem>
+                  <SelectItem value="starttls">{{ t('admin.smtpEncryptionSTARTTLS') }}</SelectItem>
+                  <SelectItem value="none">{{ t('admin.smtpEncryptionNone') }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-muted-foreground text-xs">{{ t('admin.smtpEncryptionHint') }}</p>
             </div>
             <div class="space-y-2">
               <Label for="email-username">{{ t('admin.smtpUsername') }}</Label>
