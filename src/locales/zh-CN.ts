@@ -741,6 +741,8 @@ export default {
     smtpEncryptionSTARTTLS: 'STARTTLS（端口 587/25）',
     smtpEncryptionNone: '无加密（明文，仅限可信内网）',
     smtpEncryptionHint: '自动检测能纠正端口与加密方式的错配；明确指定后不再自动回退',
+    smtpSkipTLSVerify: '跳过证书校验',
+    smtpSkipTLSVerifyHint: 'Mailcow 等自签证书的内网服务器需开启；连接仍加密，只是不验证证书身份。公网服务商请保持关闭',
     smtpUsername: 'SMTP 账户',
     smtpPassword: 'SMTP 密码',
     smtpPasswordSaved: '已保存，留空则不修改',

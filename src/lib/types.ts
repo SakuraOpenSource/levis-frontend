@@ -685,6 +685,8 @@ export interface EmailSettings {
   smtp_port: number
   smtp_ssl: boolean
   /** 加密方式：auto / ssl / starttls / none */
+  /** 自签证书场景跳过 TLS 证书校验（连接仍加密，仅不验证身份） */
+  smtp_skip_tls_verify: boolean
   smtp_encryption: string
   smtp_username: string
   smtp_from: string

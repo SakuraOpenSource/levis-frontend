@@ -73,6 +73,7 @@ const emailForm = reactive({
   ssl: true,
   // 加密方式：auto / ssl / starttls / none。
   encryption: 'auto',
+  skipTLSVerify: false,
   username: '',
   from: '',
   password: '',
@@ -169,6 +170,7 @@ async function load() {
     emailForm.port = String(emailCfg.smtp_port || 465)
     emailForm.ssl = emailCfg.smtp_ssl
     emailForm.encryption = emailCfg.smtp_encryption || 'auto'
+    emailForm.skipTLSVerify = emailCfg.smtp_skip_tls_verify
     emailForm.username = emailCfg.smtp_username
     emailForm.from = emailCfg.smtp_from
     emailForm.password = ''
@@ -221,6 +223,7 @@ async function save() {
         smtp_port: Number(emailForm.port) || 465,
         smtp_ssl: emailForm.ssl,
         smtp_encryption: emailForm.encryption,
+        smtp_skip_tls_verify: emailForm.skipTLSVerify,
         smtp_username: emailForm.username,
         smtp_from: emailForm.from,
         has_password: emailForm.hasPassword,
@@ -344,6 +347,13 @@ async function sendEmailTest() {
                 </SelectContent>
               </Select>
               <p class="text-muted-foreground text-xs">{{ t('admin.smtpEncryptionHint') }}</p>
+            </div>
+            <div class="flex items-center justify-between rounded-md border p-3 sm:col-span-2">
+              <div class="space-y-1">
+                <div class="text-sm font-medium">{{ t('admin.smtpSkipTLSVerify') }}</div>
+                <div class="text-muted-foreground text-xs">{{ t('admin.smtpSkipTLSVerifyHint') }}</div>
+              </div>
+              <Switch v-model:checked="emailForm.skipTLSVerify" />
             </div>
             <div class="space-y-2">
               <Label for="email-username">{{ t('admin.smtpUsername') }}</Label>
