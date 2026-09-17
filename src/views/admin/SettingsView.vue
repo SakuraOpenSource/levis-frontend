@@ -353,7 +353,7 @@ async function sendEmailTest() {
                 <div class="text-sm font-medium">{{ t('admin.smtpSkipTLSVerify') }}</div>
                 <div class="text-muted-foreground text-xs">{{ t('admin.smtpSkipTLSVerifyHint') }}</div>
               </div>
-              <Switch v-model:checked="emailForm.skipTLSVerify" />
+              <Switch v-model="emailForm.skipTLSVerify" />
             </div>
             <div class="space-y-2">
               <Label for="email-username">{{ t('admin.smtpUsername') }}</Label>
@@ -379,14 +379,14 @@ async function sendEmailTest() {
               <div class="text-sm font-medium">{{ t('admin.emailCodeRegister') }}</div>
               <div class="text-muted-foreground text-xs">{{ t('admin.emailCodeRegisterHint') }}</div>
             </div>
-            <Switch v-model:checked="emailForm.registerCode" />
+            <Switch v-model="emailForm.registerCode" />
           </div>
           <div class="flex items-center justify-between rounded-md border p-3">
             <div class="space-y-1">
               <div class="text-sm font-medium">{{ t('admin.emailCodeLogin') }}</div>
               <div class="text-muted-foreground text-xs">{{ t('admin.emailCodeLoginHint') }}</div>
             </div>
-            <Switch v-model:checked="emailForm.loginCode" />
+            <Switch v-model="emailForm.loginCode" />
           </div>
           <div class="flex flex-wrap items-end gap-2">
             <div class="space-y-2">
