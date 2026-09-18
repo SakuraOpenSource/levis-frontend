@@ -23,6 +23,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
+import { openExternalUrl, openHtmlFragment } from '@/lib/utils'
 import { kycApi } from '@/lib/endpoints'
 import { formatBytes, formatDateTime, MAX_PHOTO_BYTES } from '@/lib/utils'
 import type { KYCMine } from '@/lib/types'
@@ -157,11 +158,9 @@ async function startExternal() {
     await load()
     externalHint.value = result.message || t('kyc.externalStarted')
     if (result.certify_html) {
-      const win = window.open('', '_blank')
-      win?.document.write(result.certify_html)
-      win?.document.close()
+      openHtmlFragment(result.certify_html)
     } else if (result.certify_url) {
-      window.open(result.certify_url, '_blank', 'noopener')
+      openExternalUrl(result.certify_url)
     }
     schedulePoll()
     toast.success(t('kyc.externalStarted'))

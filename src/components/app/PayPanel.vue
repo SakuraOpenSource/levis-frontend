@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { errorMessage } from '@/lib/api'
 import { invoiceApi, orderApi, paymentApi } from '@/lib/endpoints'
 import type { ExternalPayment, PaymentMethod } from '@/lib/types'
-import { formatCents } from '@/lib/utils'
+import { formatCents, openExternalUrl } from '@/lib/utils'
 
 const props = defineProps<{
   totalCents: number
@@ -79,7 +79,7 @@ function clampDeduct() {
 }
 
 function openPayment() {
-  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
+  if (payment.value?.pay_url) openExternalUrl(payment.value.pay_url)
 }
 
 async function loadMethods() {

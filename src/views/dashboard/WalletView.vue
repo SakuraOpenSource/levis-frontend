@@ -25,7 +25,7 @@ import {
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { paymentApi, walletApi } from '@/lib/endpoints'
-import { formatDateTime } from '@/lib/utils'
+import { formatDateTime, openExternalUrl } from '@/lib/utils'
 import type { ExternalPayment, PaymentMethod, Transaction, WalletOverview } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth'
 
@@ -90,7 +90,7 @@ async function recharge() {
   error.value = null
   try {
     payment.value = await paymentApi.create('recharge', 0, selectedMethod.value, amountCents.value)
-    if (payment.value.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
+    if (payment.value.pay_url) openExternalUrl(payment.value.pay_url)
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -99,7 +99,7 @@ async function recharge() {
 }
 
 function openPayment() {
-  if (payment.value?.pay_url) window.open(payment.value.pay_url, '_blank', 'noopener,noreferrer')
+  if (payment.value?.pay_url) openExternalUrl(payment.value.pay_url)
 }
 
 async function queryPayment() {

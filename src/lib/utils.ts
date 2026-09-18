@@ -57,3 +57,42 @@ export function formatBytes(bytes: number) {
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 export const MAX_ATTACHMENTS = 5
 export const MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+/**
+ * 安全地在新窗口打开外部 URL：只放行 http(s)。
+ *
+ * 支付回跳、第三方认证等 URL 来自后端透传的上游数据，若上游（或攻击者
+ * 控制的上游配置）返回 javascript: / data: 这类伪协议，直接 window.open
+ * 会在站点同源下执行脚本。白名单放行 + noopener 把这条路堵死。
+ */
+export function openExternalUrl(url: string | null | undefined) {
+  if (!url) return
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return
+  window.open(parsed.toString(), '_blank', 'noopener,noreferrer')
+}
+
+/**
+ * 在新窗口渲染一段后端返回的 HTML 片段（第三方实名认证页）。
+ *
+ * 不用 document.write：它会把片段写进站点同源文档，脚本部分可读取本站
+ * cookie。这里走 blob URL，内容处于独立的 null 源，站内凭证不可达；
+ * 打开窗口带 noopener，回引也被切断。窗口句柄不可用时静默放弃 ——
+ * 弹窗拦截器拦下的场景本就没有可用的窗口。
+ */
+export function openHtmlFragment(html: string) {
+  if (!html) return
+  const blob = new Blob([html], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  // 立刻回收：窗口已经拿到自己的副本，句柄留着我们也没有用处。
+  if (win) {
+    win.opener = null
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
