@@ -121,7 +121,12 @@ export default {
   },
   auth: {
     loginTitle: '登录',
-    loginSubtitle: '管理员与普通用户共用此入口',
+    loginSubtitle: '登录你的账号',
+    adminLoginTitle: '管理员登录',
+    adminLoginSubtitle: '管理员专用入口，需输入验证码',
+    adminEntryHint: '该账号是管理员，请使用管理员专用入口',
+    goAdminLogin: '前往管理员登录',
+    backToUserLogin: '返回用户登录',
     registerTitle: '注册',
     registerSubtitle: '创建一个新账号',
     identifier: '用户名或邮箱',

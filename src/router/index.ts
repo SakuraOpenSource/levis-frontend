@@ -38,6 +38,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/RegisterView.vue'),
     meta: { guestOnly: true },
   },
+  {
+    // 管理员专用登录入口：必须是顶层路由 —— /admin 父级带着 requiresAdmin，
+    // 挂在它下面会让未登录的访问被守卫弹回普通登录页，入口就废了。
+    path: '/admin/login',
+    name: 'admin-login',
+    component: () => import('@/views/AdminLoginView.vue'),
+    meta: { guestOnly: true },
+  },
    {
      path: '/',
      component: () => import('@/layouts/SiteLayout.vue'),

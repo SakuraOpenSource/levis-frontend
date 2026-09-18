@@ -158,6 +158,15 @@ export const authApi = {
     }
     return data.user
   },
+  /** 管理员专用入口：后端强制验证码，captcha 字段必传。 */
+  async adminLogin(identifier: string, password: string, captcha: CaptchaAnswer) {
+    const { data } = await http.post<{ user: User }>('/admin/login', {
+      identifier,
+      password,
+      ...captcha,
+    })
+    return data.user
+  },
   /** 登录二次校验：票据 + 邮箱验证码换会话。 */
   async loginEmailCode(ticket: string, code: string) {
     const { data } = await http.post<{ user: User }>('/auth/login/email', { ticket, code })

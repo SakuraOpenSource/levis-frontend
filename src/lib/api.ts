@@ -15,6 +15,8 @@ export const ErrorCode = {
   Conflict: 'CONFLICT',
   NotInstalled: 'NOT_INSTALLED',
   Internal: 'INTERNAL',
+  TooManyRequests: 'TOO_MANY_REQUESTS',
+  AdminEntryRequired: 'ADMIN_ENTRY_REQUIRED',
 } as const
 
 /** 规范化后的 API 错误，页面只需读 code / message。 */

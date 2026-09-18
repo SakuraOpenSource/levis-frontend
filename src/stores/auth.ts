@@ -35,6 +35,15 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value
   }
 
+  /**
+   * 管理员专用入口登录。后端强制验证码，失败次数与普通入口分开计数。
+   */
+  async function adminLogin(identifier: string, password: string, captcha: CaptchaAnswer) {
+    user.value = await authApi.adminLogin(identifier, password, captcha)
+    resolved.value = true
+    return user.value
+  }
+
   async function register(
     payload: { username: string; email: string; password: string } & CaptchaAnswer,
   ) {
@@ -81,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
     balanceCents,
     restore,
     login,
+    adminLogin,
     register,
     logout,
     clear,

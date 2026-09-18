@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { errorMessage } from '@/lib/api'
+import { ApiError, ErrorCode, errorMessage } from '@/lib/api'
 import { authApi } from '@/lib/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
@@ -29,6 +29,9 @@ const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
 const submitting = ref(false)
 
+/** 管理员凭证被普通入口定向拒绝时，展示专用入口引导。 */
+const adminEntryHint = ref(false)
+
 /** 登录邮箱验证码的第二步状态：票据与掩码邮箱由首次登录响应给出。 */
 const emailStep = reactive({ active: false, ticket: '', maskedEmail: '' })
 const emailCode = ref('')
@@ -46,6 +49,7 @@ async function finishLogin(user: { role: string }) {
 
 async function submit() {
   error.value = null
+  adminEntryHint.value = false
   if (!form.identifier.trim() || !form.password) {
     error.value = t('error.required')
     return
@@ -70,6 +74,9 @@ async function submit() {
       emailStep.ticket = info.ticket ?? ''
       emailStep.maskedEmail = info.maskedEmail ?? ''
       emailCode.value = ''
+    } else if (err instanceof ApiError && err.code === ErrorCode.AdminEntryRequired) {
+      // 管理员凭证在普通入口被定向拒绝：给出专用入口引导而不是一句报错。
+      adminEntryHint.value = true
     } else {
       error.value = errorMessage(err)
       // 验证码是一次性的，哪怕这次是密码错也已经作废，必须换一张。
@@ -176,6 +183,16 @@ async function submitEmailCode() {
             :disabled="submitting"
           />
 
+          <!-- 管理员凭证被定向拒绝：引导去专用入口，而不是让用户反复撞错。 -->
+          <div
+            v-if="adminEntryHint"
+            class="bg-muted text-foreground flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+          >
+            <span>{{ t('auth.adminEntryHint') }}</span>
+            <RouterLink :to="{ name: 'admin-login' }" class="text-primary hover:underline">
+              {{ t('auth.goAdminLogin') }}
+            </RouterLink>
+          </div>
           <Button type="submit" class="w-full" :disabled="submitting">
             <Loader2 v-if="submitting" class="animate-spin" />
             {{ submitting ? t('auth.loggingIn') : t('auth.submitLogin') }}
