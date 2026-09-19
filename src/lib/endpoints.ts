@@ -234,6 +234,11 @@ export const catalogApi = {
  * 避免通过公开接口探测草稿的存在。
  */
 export const articleApi = {
+  /** 已发布文章索引（不含正文），知识库列表页用。 */
+  async list() {
+    const { data } = await http.get<Article[]>('/articles')
+    return data
+  },
   async getById(id: number) {
     const { data } = await http.get<Article>(`/articles/by-id/${id}`)
     return data

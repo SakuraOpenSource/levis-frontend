@@ -62,6 +62,7 @@ export default {
     support: '支持',
     ticketNew: '提交工单',
     tickets: '工单列表',
+    knowledge: '知识库',
     security: '安全中心',
     account: '账号设置',
     verification: '实名认证',
@@ -424,6 +425,12 @@ export default {
     referencedHint: '仍被商品引用为购买协议的文章不可删除，请先解除引用',
     viewArticle: '查看文章',
     notFound: '文章不存在或尚未发布',
+  },
+  knowledge: {
+    title: '知识库',
+    subtitle: '常见问题、使用教程与公告文档',
+    empty: '暂无文档',
+    updatedAt: '更新于',
   },
   agreement: {
     agree: '我已阅读并同意《{title}》',
