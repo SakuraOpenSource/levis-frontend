@@ -64,6 +64,7 @@ import { http, postForm } from './api'
  HostMetrics,
  HostVNC,
  ServiceTrafficProgress,
+ UpstreamAgent,
  UpstreamHost,
  UpstreamInterface,
  } from './types'
@@ -213,6 +214,11 @@ export const catalogApi = {
     const { data } = await http.get<{ items: { id: string; name: string; group: string }[] | null }>(
       `/catalog/products/${id}/os`,
     )
+    return data.items ?? []
+  },
+  /** 接口商品可选的被控节点；老插件/非接口商品返回空数组。 */
+  async productAgents(id: number) {
+    const { data } = await http.get<{ items: UpstreamAgent[] | null }>(`/catalog/products/${id}/agents`)
     return data.items ?? []
   },
   /** 可申请的代理等级列表。 */

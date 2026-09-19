@@ -289,6 +289,15 @@ export interface OSImage {
   group: string
 }
 
+/** 上游被控节点摘要（购买页选节点用，安全字段）。 */
+export interface UpstreamAgent {
+  id: string
+  name: string
+  display_name: string
+  status: string
+  drivers: string[]
+}
+
 export interface UpstreamHost {
   id: string
   product_id: string

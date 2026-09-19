@@ -24,7 +24,7 @@ import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { articleApi, catalogApi, orderApi } from '@/lib/endpoints'
 import { regionInfo } from '@/lib/regions'
- import type { Article, Product, ProvisionConfig } from '@/lib/types'
+ import type { Article, Product, ProvisionConfig, UpstreamAgent } from '@/lib/types'
 
 /**
  * 接口商品购买页：弹性云在区间内自选规格，固定配置只展示；
@@ -63,6 +63,9 @@ const toast = useToast()
 const images = ref<{ id: string; name: string; group: string }[]>([])
 const imagesLoading = ref(false)
 const imagesError = ref<string | null>(null)
+/** 可选被控节点：非空时展示节点选择，提交带 agent_id。 */
+const agents = ref<UpstreamAgent[]>([])
+const selectedAgent = ref('')
 
 const selectedImage = ref('')
 const quantity = ref(1)
@@ -200,6 +203,20 @@ async function loadImages() {
   }
 }
 
+/** 加载可选被控节点：仅在线节点可选中；空列表时隐藏选择器（上游自动选）。 */
+async function loadAgents() {
+  try {
+    agents.value = await catalogApi.productAgents(Number(route.params.id))
+  } catch {
+    agents.value = []
+  }
+}
+
+function agentLabel(a: UpstreamAgent) {
+  const name = a.display_name || a.name
+  return a.status === 'online' ? name : `${name}（离线）`
+}
+
  async function submit() {
    formError.value = null
    if (!cfg.value || !product.value) return
@@ -246,6 +263,7 @@ async function loadImages() {
         traffic_gb: formatSpec(picks.traffic_gb),
         image_id: selectedImage.value,
         image_name: images.value.find((item) => item.id === selectedImage.value)?.name ?? '',
+        ...(selectedAgent.value ? { agent_id: selectedAgent.value } : {}),
       },
     })
     toast.success('订单已创建，请完成支付')
@@ -270,6 +288,7 @@ onMounted(async () => {
      if (item.agreement_article_id != null) await loadAgreement(item.agreement_article_id)
      if ((item.agreement_article_ids?.length ?? 0) > 0) await loadAgreements(item.agreement_article_ids ?? [])
     await loadImages()
+    await loadAgents()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -381,6 +400,26 @@ onMounted(async () => {
             <SelectContent>
               <SelectItem v-for="image in images" :key="image.id" :value="image.id">
                 {{ image.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      <Card v-if="agents.length > 0">
+        <CardHeader>
+          <CardTitle class="text-base">部署节点</CardTitle>
+          <CardDescription>选择实例将被创建的被控节点；不选则由上游自动分配。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Select v-model="selectedAgent">
+            <SelectTrigger>
+              <SelectValue placeholder="自动分配（推荐）" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">自动分配（推荐）</SelectItem>
+              <SelectItem v-for="a in agents" :key="a.id" :value="a.id" :disabled="a.status !== 'online'">
+                {{ agentLabel(a) }}
               </SelectItem>
             </SelectContent>
           </Select>
