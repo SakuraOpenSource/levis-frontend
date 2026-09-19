@@ -60,6 +60,7 @@ import { http, postForm } from './api'
  OSImage,
  HostMetrics,
  HostVNC,
+ ServiceTrafficProgress,
  UpstreamHost,
  UpstreamInterface,
  } from './types'
@@ -371,6 +372,11 @@ export const orderApi = {
    /** 实时监控：CPU/内存/带宽占用，上游不支持时抛错由调用方降级。 */
    async metrics(id: number) {
      const { data } = await http.get<HostMetrics>(`/services/${id}/metrics`)
+     return data
+   },
+   /** 流量进度：本地权威累计（差分累加），不限流量时 unlimited=true。 */
+   async traffic(id: number) {
+     const { data } = await http.get<ServiceTrafficProgress>(`/services/${id}/traffic`)
      return data
    },
    /** VNC 可用性：available 为 false 时看 message 原因，不直接暴露上游票据。 */

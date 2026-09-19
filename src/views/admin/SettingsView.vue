@@ -64,6 +64,8 @@ const siteForm = reactive({
   description: '',
   // 流量包兜底单价按元输入，保存时换算成分；空串表示未定价。
   trafficPrice: '',
+  // 生命周期删机开关：默认干跑（只记日志不删除）。
+  lifecycleTerminate: false,
 })
 
 /** SMTP 邮件与邮箱验证码开关的编辑态。 */
@@ -166,6 +168,7 @@ async function load() {
     siteForm.trafficPrice = siteCfg.traffic_price_per_gb_cents
       ? (siteCfg.traffic_price_per_gb_cents / 100).toFixed(2)
       : ''
+    siteForm.lifecycleTerminate = !!siteCfg.lifecycle_terminate_enabled
     emailForm.host = emailCfg.smtp_host
     emailForm.port = String(emailCfg.smtp_port || 465)
     emailForm.ssl = emailCfg.smtp_ssl
@@ -217,6 +220,7 @@ async function save() {
         site_name: siteForm.name,
         site_description: siteForm.description,
         traffic_price_per_gb_cents: yuanToFen(siteForm.trafficPrice),
+        lifecycle_terminate_enabled: siteForm.lifecycleTerminate,
       }),
       adminApi.updateEmailSettings({
         smtp_host: emailForm.host,
@@ -314,6 +318,13 @@ async function sendEmailTest() {
               <span class="text-muted-foreground shrink-0 text-xs">元 / GB</span>
             </div>
             <p class="text-muted-foreground text-xs">{{ t('admin.trafficPricePerGBHint') }}</p>
+          </div>
+          <div class="flex max-w-xl items-center justify-between gap-4 rounded-md border p-3">
+            <div class="space-y-0.5">
+              <Label for="lifecycle-terminate">{{ t('admin.lifecycleTerminate') }}</Label>
+              <p class="text-muted-foreground text-xs">{{ t('admin.lifecycleTerminateHint') }}</p>
+            </div>
+            <Switch id="lifecycle-terminate" v-model="siteForm.lifecycleTerminate" />
           </div>
         </CardContent>
       </Card>

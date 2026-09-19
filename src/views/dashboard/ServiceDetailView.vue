@@ -33,7 +33,7 @@ import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { catalogApi, serviceApi, walletApi } from '@/lib/endpoints'
 import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
-import type { HostMetrics, Invoice, NatMapping, OSImage, PowerAction, Service, UpstreamHost } from '@/lib/types'
+import type { HostMetrics, Invoice, NatMapping, OSImage, PowerAction, Service, ServiceTrafficProgress, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -93,6 +93,8 @@ async function onRenewPaid() {
     ])
     item.value = service
     walletBalance.value = wallet.balance_cents
+    // 续费可能触发自动恢复（expired/traffic 停机），重读流量进度。
+    await loadTrafficProgress()
     toast.success(t('services.renewed'))
   } catch (err) {
     toast.error(errorMessage(err))
@@ -105,7 +107,22 @@ const trafficUnit = ref<'GB' | 'TB'>('GB')
 const trafficAmount = ref(100)
 const trafficPrice = ref<{ unitPrice: number; step: number } | null>(null)
 
-const canTraffic = computed(() => item.value?.status === 'active')
+/** 流量包加购：active 与流量超限停机都可加购（后端 loadTrafficService 同口径）。 */
+const canTraffic = computed(
+  () => item.value?.status === 'active' || (item.value?.status === 'suspended' && item.value.suspend_reason === 'traffic'),
+)
+
+/** 流量进度：本地权威累计。加载失败静默降级（老后端无此端点时只隐藏进度条）。 */
+const trafficProgress = ref<ServiceTrafficProgress | null>(null)
+
+async function loadTrafficProgress() {
+  if (!item.value) return
+  try {
+    trafficProgress.value = await serviceApi.traffic(item.value.id)
+  } catch {
+    trafficProgress.value = null
+  }
+}
 
 /** 以 GB 为单位的加购量（TB 按 1TB=1024GB 换算），与后端校验口径一致。 */
 const trafficExtraGB = computed(
@@ -167,6 +184,8 @@ async function onTrafficPaid() {
     ])
     item.value = service
     walletBalance.value = wallet.balance_cents
+    // 流量包结清后服务应自动恢复，重读流量进度与状态。
+    await loadTrafficProgress()
     toast.success(t('services.trafficPaid'))
   } catch (err) {
     toast.error(errorMessage(err))
@@ -286,10 +305,16 @@ function stopMetricsTimer() {
   }
 }
 
+/** 轮询计数：流量进度每 6 次采样（约 60 秒）刷一次，与 metrics 同卡展示。 */
+let metricsTickCount = 0
+
 function startMetricsTimer() {
   stopMetricsTimer()
+  metricsTickCount = 0
   metricsTimer = window.setInterval(() => {
     void loadMetrics(true)
+    metricsTickCount += 1
+    if (metricsTickCount % 6 === 0) void loadTrafficProgress()
   }, 10000)
 }
 
@@ -634,6 +659,7 @@ async function confirmReinstall() {
 onMounted(async () => {
   await load()
   await loadTrafficPrice()
+  await loadTrafficProgress()
   await loadUpstream()
   await loadNat()
   await loadMetrics()
@@ -653,10 +679,12 @@ watch(() => route.params.id, async () => {
   metricHistory.value = []
   upstream.value = null
   natMappings.value = []
+  trafficProgress.value = null
   error.value = null
   loading.value = true
   await load()
   await loadTrafficPrice()
+  await loadTrafficProgress()
   await loadUpstream()
   await loadNat()
   await loadMetrics()
@@ -712,6 +740,12 @@ onBeforeUnmount(() => {
          </Button>
        </AlertDescription>
      </Alert>
+    <Alert v-if="item && item.status === 'suspended' && item.suspend_reason === 'traffic'" variant="warning">
+      <AlertDescription>{{ t('services.trafficSuspendedHint') }}</AlertDescription>
+    </Alert>
+    <Alert v-else-if="item && item.status === 'suspended' && item.suspend_reason === 'expired'" variant="warning">
+      <AlertDescription>{{ t('services.expiredSuspendedHint') }}</AlertDescription>
+    </Alert>
     <div v-if="item && canRenew && isFree" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
       免费服务无需在线续费
     </div>
@@ -729,6 +763,22 @@ onBeforeUnmount(() => {
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-sm font-medium">{{ t('services.trafficTitle') }}</h2>
           <span class="text-muted-foreground text-xs">{{ t('services.trafficQuota') }}：{{ item.traffic_extra_gb ?? 0 }} GB</span>
+        </div>
+        <div v-if="trafficProgress" class="space-y-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-muted-foreground">{{ t('services.trafficUsage') }}</span>
+            <span v-if="trafficProgress.unlimited" class="text-muted-foreground">{{ t('services.trafficUnlimited') }}（{{ t('services.trafficUsed') }} {{ formatBytes(trafficProgress.used_bytes) }}）</span>
+            <span v-else :class="trafficProgress.exceeded ? 'font-medium text-destructive' : ''">
+              {{ formatBytes(trafficProgress.used_bytes) }} / {{ trafficProgress.quota_gb }} GB（{{ trafficProgress.percent.toFixed(1) }}%）
+            </span>
+          </div>
+          <div v-if="!trafficProgress.unlimited" class="h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              class="h-full rounded-full transition-all"
+              :class="trafficProgress.exceeded ? 'bg-destructive' : 'bg-primary'"
+              :style="{ width: `${trafficProgress.percent}%` }"
+            />
+          </div>
         </div>
         <p class="text-muted-foreground text-xs">{{ t('services.trafficHint') }}</p>
         <div v-if="!trafficInvoice" class="flex flex-wrap items-end gap-3">

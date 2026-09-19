@@ -183,10 +183,23 @@ export interface Service extends Timestamps {
   expires_at: string | null
   /** 售后加购累计的额外流量配额（GB），结清流量包账单时由后端累加。 */
   traffic_extra_gb: number
+  /** 自动停机原因：空=无，traffic=流量超限停机，expired=到期停机；手动停机为空。 */
+  suspend_reason: string
   upstream_plugin_id: string
   upstream_host_id: string
   /** 最近一次上游开通失败的原因，成功后由后端清空；为空表示无失败。 */
   provision_error: string
+}
+
+/** 服务流量进度：used/quota 与百分比；unlimited 时 quota/percent 无意义。 */
+export interface ServiceTrafficProgress {
+  used_bytes: number
+  quota_gb: number
+  used_gb: number
+  percent: number
+  unlimited: boolean
+  exceeded: boolean
+  suspend_reason?: string
 }
 
 /** 电源操作动作：开机/关机/重启/重装系统。 */
@@ -677,6 +690,8 @@ export interface SiteSettings {
   site_description: string
   /** 流量包兜底单价（分/GB）；0 表示未定价，用户将无法加购流量。 */
   traffic_price_per_gb_cents?: number
+  /** 生命周期删机开关：false=干跑（到期宽限期满只记日志不删除）。 */
+  lifecycle_terminate_enabled?: boolean
 }
 
 /** 管理端 SMTP 邮件配置的读写体；密码只写不读（has_password 表示已配置）。 */
