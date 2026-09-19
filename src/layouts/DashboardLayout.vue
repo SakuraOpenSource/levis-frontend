@@ -12,6 +12,7 @@ import {
   Menu,
   MessageSquarePlus,
   Package,
+  RotateCcw,
   Store,
   Ticket,
   UserCog,
@@ -64,6 +65,7 @@ const items = computed<NavItem[]>(() => [
       },
       { key: 'tickets', label: t('sidebar.tickets'), icon: Ticket, to: { name: 'tickets' }, exact: true },
       { key: 'knowledge', label: t('sidebar.knowledge'), icon: BookOpen, to: { name: 'knowledge' } },
+      { key: 'refunds', label: t('sidebar.refunds'), icon: RotateCcw, to: { name: 'refunds' } },
     ],
   },
   {

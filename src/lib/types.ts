@@ -791,6 +791,47 @@ export interface ArticleInput {
   sort_order: number
 }
 
+/** 退款申请状态。 */
+export type RefundStatus = 'pending' | 'approved' | 'rejected' | 'failed' | 'canceled' | 'refunded'
+
+export const REFUND_STATUSES: RefundStatus[] = [
+  'pending',
+  'approved',
+  'rejected',
+  'failed',
+  'canceled',
+  'refunded',
+]
+
+/** 策略判定：auto_approved=自动通过 manual_review=转人工 policy_denied=不符合条件。 */
+export type RefundPolicyResult = 'auto_approved' | 'manual_review' | 'policy_denied'
+
+/** 退款申请。 */
+export interface RefundRequest extends Timestamps {
+  refund_no: string
+  user_id: number
+  payment_id: number
+  order_id: number
+  amount_cents: number
+  channel_cents: number
+  balance_cents: number
+  reason: string
+  status: RefundStatus
+  policy_result: RefundPolicyResult | ''
+  review_remark: string
+  reviewer_id: number
+  reviewed_at: string | null
+  fail_reason: string
+  refunded_at: string | null
+}
+
+/** 退款审批策略。缺失时后端等价于 force_manual=true。 */
+export interface RefundPolicySettings {
+  force_manual: boolean
+  auto_approve_all: boolean
+  no_refund_after_hours: number
+}
+
 export interface CreateUserInput {
   username: string
   email: string

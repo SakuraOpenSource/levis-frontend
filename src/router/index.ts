@@ -93,6 +93,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboard/KnowledgeView.vue'),
       },
       {
+        path: 'refunds',
+        name: 'refunds',
+        component: () => import('@/views/dashboard/RefundsView.vue'),
+      },
+      {
         path: 'services',
         name: 'services',
         component: () => import('@/views/dashboard/ServicesView.vue'),
@@ -196,6 +201,11 @@ const routes: RouteRecordRaw[] = [
         path: 'articles',
         name: 'admin-articles',
         component: () => import('@/views/admin/ArticlesView.vue'),
+      },
+      {
+        path: 'refunds',
+        name: 'admin-refunds',
+        component: () => import('@/views/admin/RefundsView.vue'),
       },
       {
         path: 'finance',

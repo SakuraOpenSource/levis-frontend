@@ -12,6 +12,7 @@ import {
   Menu,
   Package,
   Puzzle,
+  RotateCcw,
   Server,
   Settings,
   Store,
@@ -61,6 +62,7 @@ const items = computed<NavItem[]>(() => [
   { key: 'interfaces', label: '接口管理', icon: Cable, to: { name: 'admin-interfaces' } },
   { key: 'agent-program', label: '代理管理', icon: Crown, to: { name: 'admin-agent-program' } },
   { key: 'finance', label: t('adminNav.finance'), icon: Wallet, to: { name: 'admin-finance' } },
+  { key: 'refunds', label: t('adminNav.refunds'), icon: RotateCcw, to: { name: 'admin-refunds' } },
   { key: 'tickets', label: t('adminNav.tickets'), icon: Ticket, to: { name: 'admin-tickets' } },
   {
     key: 'verifications',

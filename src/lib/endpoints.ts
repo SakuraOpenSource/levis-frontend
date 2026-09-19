@@ -55,6 +55,9 @@ import { http, postForm } from './api'
  PluginListResponse,
  ExternalPayment,
  PaymentMethod,
+ RefundPolicySettings,
+ RefundRequest,
+ RefundStatus,
  PaymentMethodAdmin,
  PaymentPlugin,
  OSImage,
@@ -444,6 +447,45 @@ export const walletApi = {
      return data
    },
  }
+
+/** 退款申请。 */
+export const refundApi = {
+  async list(query: PageQuery = {}) {
+    const { data } = await http.get<Page<RefundRequest>>('/refunds', { params: query })
+    return data
+  },
+  async create(payload: { payment_id?: number; order_id?: number; reason: string }) {
+    const { data } = await http.post<RefundRequest>('/refunds', payload)
+    return data
+  },
+  async cancel(id: number) {
+    const { data } = await http.post<RefundRequest>(`/refunds/${id}/cancel`)
+    return data
+  },
+  /** 管理端：全量列表（status 可选过滤）。 */
+  async adminList(query: PageQuery & { status?: RefundStatus | '' } = {}) {
+    const { data } = await http.get<Page<RefundRequest>>('/admin/refunds', { params: query })
+    return data
+  },
+  /** 管理端：审批。approve=false 时 remark 必填。 */
+  async adminReview(id: number, payload: { approve: boolean; remark?: string }) {
+    const { data } = await http.post<RefundRequest>(`/admin/refunds/${id}/review`, payload)
+    return data
+  },
+  /** 管理端：渠道退款失败后重试。 */
+  async adminRetry(id: number) {
+    const { data } = await http.post<RefundRequest>(`/admin/refunds/${id}/retry`)
+    return data
+  },
+  async policy() {
+    const { data } = await http.get<RefundPolicySettings>('/admin/settings/refund')
+    return data
+  },
+  async savePolicy(payload: RefundPolicySettings) {
+    const { data } = await http.put<RefundPolicySettings>('/admin/settings/refund', payload)
+    return data
+  },
+}
 
 /** 工单。建单与回复都是 multipart，因此走 postForm。 */
 export const ticketApi = {
