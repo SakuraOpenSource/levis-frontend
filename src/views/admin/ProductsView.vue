@@ -65,10 +65,13 @@ interface ProvisionForm {
   traffic_price_cents: number
   // 商品级固定的上游被控节点；'' = 自动分配。
   agent_id: string
+  // 允许买家在购买页自选部署节点。
+  allowBuyerAgent: boolean
 }
 
 /** 弹性配置编辑器的资源行元数据。CPU 支持小数核数（下限 0.1、可按 0.05 微调）。 */
-const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id'>; label: string; unit: string; min: number; inputStep: string }[] = [
+type RangeKey = keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id' | 'allowBuyerAgent'>
+const PROVISION_FIELDS: { key: RangeKey; label: string; unit: string; min: number; inputStep: string }[] = [
   { key: 'cpu', label: 'CPU', unit: '核', min: 0.1, inputStep: '0.05' },
   { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, inputStep: '1' },
   { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, inputStep: '1' },
@@ -87,6 +90,7 @@ function emptyProvision(): ProvisionForm {
     traffic_gb: { min: 0, max: 0, step: 1, unit_price_cents: 0 },
     traffic_price_cents: 0,
     agent_id: '',
+    allowBuyerAgent: false,
   }
 }
 
@@ -295,6 +299,7 @@ function openEdit(item: Product) {
      region: item.region || '',
    })
   provision.agent_id = item.provision_config?.agent_id ? String(item.provision_config.agent_id) : ''
+  provision.allowBuyerAgent = !!item.provision_config?.allow_buyer_agent
   if (item.interface_id) loadIfaceAgents(item.interface_id)
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
@@ -303,11 +308,14 @@ function openEdit(item: Product) {
     provision.driver = pc.driver as 'incus' | 'qemu'
     provision.mode = pc.mode as 'fixed' | 'elastic'
     for (const field of PROVISION_FIELDS) {
-      const range = (pc[field.key] ?? {}) as Partial<SpecRange>
-      provision[field.key].min = range.min ?? 0
-      provision[field.key].max = range.max ?? 0
-      provision[field.key].step = range.step ?? 1
-      provision[field.key].unit_price_cents = range.unit_price_cents ?? 0
+      const raw: unknown = (pc as Record<string, unknown>)[field.key]
+      const range: Partial<SpecRange> =
+        typeof raw === 'object' && raw !== null ? (raw as Partial<SpecRange>) : {}
+      const slot = provision[field.key] as { min: number; max: number; step: number; unit_price_cents: number }
+      slot.min = range.min ?? 0
+      slot.max = range.max ?? 0
+      slot.step = range.step ?? 1
+      slot.unit_price_cents = range.unit_price_cents ?? 0
     }
     provision.traffic_price_cents = (pc.traffic_price_cents as number) ?? 0
   } else {
@@ -532,15 +540,16 @@ async function syncInfo(item: Product) {
 
 /** 把编辑态整理成后端开通配置；流量统一按 GB 保存。 */
 function buildProvisionConfig() {
-  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id'>) => {
-    const min = provision[key].min
+  const range = (key: RangeKey) => {
+    const slot = provision[key] as { min: number; max: number; step: number; unit_price_cents: number }
+    const min = slot.min
     // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值。
-    const max = provision.mode === 'fixed' ? min : provision[key].max
+    const max = provision.mode === 'fixed' ? min : slot.max
     return {
       min,
       max,
-      step: provision.mode === 'fixed' ? 0 : provision[key].step,
-      unit_price_cents: provision.mode === 'fixed' ? 0 : provision[key].unit_price_cents,
+      step: provision.mode === 'fixed' ? 0 : slot.step,
+      unit_price_cents: provision.mode === 'fixed' ? 0 : slot.unit_price_cents,
     }
   }
   return {
@@ -553,6 +562,7 @@ function buildProvisionConfig() {
     traffic_price_cents: Math.max(provision.traffic_price_cents, 0),
     traffic_gb: range('traffic_gb'),
     agent_id: Number(provision.agent_id) || 0,
+    allow_buyer_agent: provision.allowBuyerAgent,
   }
 }
 
@@ -827,9 +837,17 @@ function pickInterface(interfaceId: string) {
                   </Select>
                   <span v-if="ifaceAgentsLoading" class="text-muted-foreground text-xs">加载中…</span>
                 </div>
+                <div class="flex items-center justify-between gap-4 rounded-md border px-3 py-2 ml-[4.5rem]">
+                  <div class="space-y-0.5">
+                    <Label for="provision-allow-buyer-agent">允许买家自选节点</Label>
+                    <p class="text-muted-foreground text-xs">开启后购买页显示节点选择，买家选择优先于上面的固定节点</p>
+                  </div>
+                  <Switch id="provision-allow-buyer-agent" v-model="provision.allowBuyerAgent" />
+                </div>
                 <p class="text-muted-foreground pl-[4.5rem] text-xs">
                   <template v-if="ifaceAgentsError">节点列表加载失败：{{ ifaceAgentsError }}（将按自动分配开通）</template>
-                  <template v-else>固定该商品实例的落地节点；留空由上游自动分配。买家在购买页仍可自行选择，买家选择优先。</template>
+                  <template v-else-if="provision.allowBuyerAgent">买家可在购买页自选节点；此处选择的节点作为默认值。</template>
+                  <template v-else>实例将固定落在所选节点（留空由上游自动分配）；买家不可自选。</template>
                 </p>
               </div>
               <div v-for="field in PROVISION_FIELDS" :key="field.key" class="space-y-2 rounded-md border p-3">

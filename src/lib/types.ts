@@ -113,6 +113,8 @@ export interface ProvisionConfig {
   traffic_price_cents?: number
   /** 商品级固定的上游被控节点；0/缺省表示由上游自动分配。 */
   agent_id?: number
+  /** 允许买家在购买页自选部署节点（覆盖商品固定节点）。 */
+  allow_buyer_agent?: boolean
 }
 
 /** 「接口管理」里的一条上游接口。 */

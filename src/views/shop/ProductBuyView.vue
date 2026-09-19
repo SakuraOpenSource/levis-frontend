@@ -406,10 +406,10 @@ onMounted(async () => {
         </CardContent>
       </Card>
 
-      <Card v-if="agents.length > 0">
+      <Card v-if="agents.length > 0 && (product?.provision_config?.allow_buyer_agent ?? false)">
         <CardHeader>
           <CardTitle class="text-base">部署节点</CardTitle>
-          <CardDescription>选择实例将被创建的被控节点；不选则由上游自动分配。</CardDescription>
+          <CardDescription>选择实例将被创建的被控节点；不选则按商品配置分配。</CardDescription>
         </CardHeader>
         <CardContent>
           <Select v-model="selectedAgent">
