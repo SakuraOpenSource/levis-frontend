@@ -428,12 +428,6 @@ export const walletApi = {
     const { data } = await http.get<Page<Transaction>>('/wallet/transactions', { params: query })
     return data
   },
-  async recharge(amountCents: number) {
-    const { data } = await http.post<Transaction>('/wallet/recharge', {
-      amount_cents: amountCents,
-    })
-    return data
-  },
 }
 
  /** 账单。 */

@@ -32,7 +32,7 @@ import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
 import { catalogApi, serviceApi, walletApi } from '@/lib/endpoints'
-import { formatBytes, formatDate, formatDateTime, isZeroTime } from '@/lib/utils'
+import { formatBytes, formatDate, formatDateTime, isZeroTime, openExternalUrl } from '@/lib/utils'
 import type { HostMetrics, Invoice, NatMapping, OSImage, PowerAction, Service, ServiceTrafficProgress, UpstreamHost } from '@/lib/types'
 
 const { t } = useI18n()
@@ -435,7 +435,9 @@ async function checkVnc() {
 /** 页面控制台型上游（魔方财务）：新窗口打开上游 viewer 页，不走站内 RFB 中继。 */
 function openVncViewer() {
   if (!vncViewerUrl.value) return
-  window.open(vncViewerUrl.value, '_blank', 'noopener')
+  // viewer_url 来自上游透传，可能被配置了恶意上游的人替换成 javascript: 之类的
+  // 伪协议；必须走 openExternalUrl 的 http(s) 白名单，而不是直接 window.open。
+  openExternalUrl(vncViewerUrl.value)
 }
 
 function onVncConnect() {
