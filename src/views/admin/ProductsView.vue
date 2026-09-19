@@ -63,15 +63,16 @@ interface ProvisionForm {
   traffic_gb: { min: number; max: number; step: number; unit_price_cents: number }
   // 售后流量包单价（分/GB）：固定模式商品的流量包定价入口，模式无关。
   traffic_price_cents: number
-  // 商品级固定的上游被控节点；'' = 自动分配。
-  agent_id: string
+  // 部署节点选择值：'__auto' = 自动分配（SelectItem 不接受空串，用哨兵值）。
+  agentIdChoice: string
   // 允许买家在购买页自选部署节点。
   allowBuyerAgent: boolean
 }
 
 /** 弹性配置编辑器的资源行元数据。CPU 支持小数核数（下限 0.1、可按 0.05 微调）。 */
-type RangeKey = keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id' | 'allowBuyerAgent'>
-const PROVISION_FIELDS: { key: RangeKey; label: string; unit: string; min: number; inputStep: string }[] = [
+type RangeKey = keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agentIdChoice' | 'allowBuyerAgent'>
+type RangeKey2 = Exclude<RangeKey, 'agentIdChoice'>
+const PROVISION_FIELDS: { key: RangeKey2; label: string; unit: string; min: number; inputStep: string }[] = [
   { key: 'cpu', label: 'CPU', unit: '核', min: 0.1, inputStep: '0.05' },
   { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, inputStep: '1' },
   { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, inputStep: '1' },
@@ -89,7 +90,7 @@ function emptyProvision(): ProvisionForm {
     bandwidth_mbps: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
     traffic_gb: { min: 0, max: 0, step: 1, unit_price_cents: 0 },
     traffic_price_cents: 0,
-    agent_id: '',
+    agentIdChoice: '__auto',
     allowBuyerAgent: false,
   }
 }
@@ -298,7 +299,7 @@ function openEdit(item: Product) {
      agreementArticleIds: [...(item.agreement_article_ids ?? [])],
      region: item.region || '',
    })
-  provision.agent_id = item.provision_config?.agent_id ? String(item.provision_config.agent_id) : ''
+  provision.agentIdChoice = item.provision_config?.agent_id ? String(item.provision_config.agent_id) : '__auto'
   provision.allowBuyerAgent = !!item.provision_config?.allow_buyer_agent
   if (item.interface_id) loadIfaceAgents(item.interface_id)
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
@@ -561,7 +562,7 @@ function buildProvisionConfig() {
     bandwidth_mbps: range('bandwidth_mbps'),
     traffic_price_cents: Math.max(provision.traffic_price_cents, 0),
     traffic_gb: range('traffic_gb'),
-    agent_id: Number(provision.agent_id) || 0,
+    agent_id: provision.agentIdChoice === '__auto' ? 0 : Number(provision.agentIdChoice) || 0,
     allow_buyer_agent: provision.allowBuyerAgent,
   }
 }
@@ -569,7 +570,7 @@ function buildProvisionConfig() {
 /** 选择接口后清掉传统上游绑定，两者互斥；同时拉取该接口上游的节点列表。 */
 function pickInterface(interfaceId: string) {
   form.interfaceId = interfaceId
-  provision.agent_id = ''
+  provision.agentIdChoice = '__auto'
   if (interfaceId) {
     form.upstreamPluginId = ''
     form.upstreamProductId = ''
@@ -819,12 +820,12 @@ function pickInterface(interfaceId: string) {
               <div v-if="form.interfaceId" class="space-y-2 rounded-md border p-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="w-16 shrink-0 text-sm">部署节点</span>
-                  <Select v-model="provision.agent_id" :disabled="ifaceAgentsLoading">
+                  <Select v-model="provision.agentIdChoice" :disabled="ifaceAgentsLoading">
                     <SelectTrigger class="w-64">
                       <SelectValue placeholder="自动分配（推荐）" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">自动分配（推荐）</SelectItem>
+                      <SelectItem value="__auto">自动分配（推荐）</SelectItem>
                       <SelectItem
                         v-for="a in ifaceAgents"
                         :key="a.id"
@@ -847,7 +848,7 @@ function pickInterface(interfaceId: string) {
                 <p class="text-muted-foreground pl-[4.5rem] text-xs">
                   <template v-if="ifaceAgentsError">节点列表加载失败：{{ ifaceAgentsError }}（将按自动分配开通）</template>
                   <template v-else-if="provision.allowBuyerAgent">买家可在购买页自选节点；此处选择的节点作为默认值。</template>
-                  <template v-else>实例将固定落在所选节点（留空由上游自动分配）；买家不可自选。</template>
+                  <template v-else>实例将固定落在所选节点（选自动分配则由上游决定）；买家不可自选。</template>
                 </p>
               </div>
               <div v-for="field in PROVISION_FIELDS" :key="field.key" class="space-y-2 rounded-md border p-3">
