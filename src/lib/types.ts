@@ -111,6 +111,8 @@ export interface ProvisionConfig {
   traffic_gb: SpecRange
   /** 售后流量包单价（分/GB）；固定模式商品的定价入口，0/缺省表示未定价。 */
   traffic_price_cents?: number
+  /** 商品级固定的上游被控节点；0/缺省表示由上游自动分配。 */
+  agent_id?: number
 }
 
 /** 「接口管理」里的一条上游接口。 */
@@ -703,6 +705,8 @@ export interface SiteSettings {
   traffic_price_per_gb_cents?: number
   /** 生命周期删机开关：false=干跑（到期宽限期满只记日志不删除）。 */
   lifecycle_terminate_enabled?: boolean
+  /** 站点图标是否已设置；图标本体走 /api/site-icon。 */
+  has_site_icon?: boolean
 }
 
 /** 管理端 SMTP 邮件配置的读写体；密码只写不读（has_password 表示已配置）。 */

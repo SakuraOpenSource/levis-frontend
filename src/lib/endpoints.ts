@@ -816,6 +816,16 @@ export const adminApi = {
     const { data } = await http.put<SiteSettings>('/admin/settings/site', payload)
     return data
   },
+  /** 上传站点图标（multipart 字段 file）。 */
+  async uploadSiteIcon(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return postForm<{ path: string; mime: string }>('/admin/settings/site-icon', form)
+  },
+  /** 清除站点图标。 */
+  async removeSiteIcon() {
+    await http.delete('/admin/settings/site-icon')
+  },
   /** 公开主页的完整配置。 */
   async homeConfig() {
     const { data } = await http.get<HomeConfig>('/admin/settings/home')

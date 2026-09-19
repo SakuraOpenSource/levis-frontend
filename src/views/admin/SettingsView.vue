@@ -66,7 +66,57 @@ const siteForm = reactive({
   trafficPrice: '',
   // 生命周期删机开关：默认干跑（只记日志不删除）。
   lifecycleTerminate: false,
+  // 站点图标是否已设置。
+  hasSiteIcon: false,
 })
+
+// ---- 站点图标上传 ----
+const siteIconInput = ref<HTMLInputElement | null>(null)
+const iconUploading = ref(false)
+const iconBusyNote = ref('')
+const siteIconCacheBust = ref(0)
+const siteIconUrl = computed(() => `/api/site-icon?v=${siteIconCacheBust.value}`)
+
+async function onIconPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size > 1024 * 1024) {
+    formError.value = '图标不能超过 1 MiB'
+    return
+  }
+  iconUploading.value = true
+  iconBusyNote.value = '上传中…'
+  try {
+    await adminApi.uploadSiteIcon(file)
+    siteForm.hasSiteIcon = true
+    siteIconCacheBust.value++
+    iconBusyNote.value = ''
+    toast.success('图标已更新')
+  } catch (err) {
+    formError.value = errorMessage(err)
+    iconBusyNote.value = ''
+  } finally {
+    iconUploading.value = false
+  }
+}
+
+async function removeIcon() {
+  iconUploading.value = true
+  iconBusyNote.value = '移除中…'
+  try {
+    await adminApi.removeSiteIcon()
+    siteForm.hasSiteIcon = false
+    iconBusyNote.value = ''
+    toast.success('图标已移除')
+  } catch (err) {
+    formError.value = errorMessage(err)
+    iconBusyNote.value = ''
+  } finally {
+    iconUploading.value = false
+  }
+}
 
 /** SMTP 邮件与邮箱验证码开关的编辑态。 */
 const emailForm = reactive({
@@ -169,6 +219,7 @@ async function load() {
       ? (siteCfg.traffic_price_per_gb_cents / 100).toFixed(2)
       : ''
     siteForm.lifecycleTerminate = !!siteCfg.lifecycle_terminate_enabled
+    siteForm.hasSiteIcon = !!siteCfg.has_site_icon
     emailForm.host = emailCfg.smtp_host
     emailForm.port = String(emailCfg.smtp_port || 465)
     emailForm.ssl = emailCfg.smtp_ssl
@@ -325,6 +376,40 @@ async function sendEmailTest() {
               <p class="text-muted-foreground text-xs">{{ t('admin.lifecycleTerminateHint') }}</p>
             </div>
             <Switch id="lifecycle-terminate" v-model="siteForm.lifecycleTerminate" />
+          </div>
+          <div class="space-y-2 rounded-md border p-3">
+            <Label for="site-icon">站点图标</Label>
+            <div class="flex flex-wrap items-center gap-3">
+              <img
+                v-if="siteForm.hasSiteIcon"
+                :src="siteIconUrl"
+                alt="站点图标"
+                class="h-10 w-10 rounded border object-contain"
+              />
+              <input
+                id="site-icon"
+                ref="siteIconInput"
+                type="file"
+                accept="image/png,image/x-icon,image/svg+xml"
+                class="hidden"
+                @change="onIconPicked"
+              />
+              <Button type="button" variant="outline" size="sm" :disabled="iconUploading" @click="siteIconInput?.click()">
+                {{ siteForm.hasSiteIcon ? '更换图标' : '上传图标' }}
+              </Button>
+              <Button
+                v-if="siteForm.hasSiteIcon"
+                type="button"
+                variant="ghost"
+                size="sm"
+                :disabled="iconUploading"
+                @click="removeIcon"
+              >
+                移除
+              </Button>
+              <span v-if="iconBusyNote" class="text-muted-foreground text-xs">{{ iconBusyNote }}</span>
+            </div>
+            <p class="text-muted-foreground text-xs">支持 PNG / ICO / SVG，不超过 1 MiB；保存后浏览器标签页与书签将显示该图标，可能需要强刷生效。</p>
           </div>
         </CardContent>
       </Card>

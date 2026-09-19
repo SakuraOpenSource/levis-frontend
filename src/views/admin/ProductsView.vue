@@ -36,7 +36,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
-import { errorMessage } from '@/lib/api'
+import { errorMessage, http } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
  import type { BatchResult } from '@/lib/endpoints'
 import { REGIONS, regionInfo } from '@/lib/regions'
@@ -48,6 +48,7 @@ import { REGIONS, regionInfo } from '@/lib/regions'
    type Product,
    type ProductStatus,
    type Spec,
+   type SpecRange,
    type UpstreamInterface,
  } from '@/lib/types'
 
@@ -62,10 +63,12 @@ interface ProvisionForm {
   traffic_gb: { min: number; max: number; step: number; unit_price_cents: number }
   // 售后流量包单价（分/GB）：固定模式商品的流量包定价入口，模式无关。
   traffic_price_cents: number
+  // 商品级固定的上游被控节点；'' = 自动分配。
+  agent_id: string
 }
 
 /** 弹性配置编辑器的资源行元数据。CPU 支持小数核数（下限 0.1、可按 0.05 微调）。 */
-const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents'>; label: string; unit: string; min: number; inputStep: string }[] = [
+const PROVISION_FIELDS: { key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id'>; label: string; unit: string; min: number; inputStep: string }[] = [
   { key: 'cpu', label: 'CPU', unit: '核', min: 0.1, inputStep: '0.05' },
   { key: 'memory_mb', label: '内存', unit: 'MB', min: 16, inputStep: '1' },
   { key: 'disk_gb', label: '硬盘', unit: 'GB', min: 1, inputStep: '1' },
@@ -83,6 +86,31 @@ function emptyProvision(): ProvisionForm {
     bandwidth_mbps: { min: 10, max: 10, step: 1, unit_price_cents: 0 },
     traffic_gb: { min: 0, max: 0, step: 1, unit_price_cents: 0 },
     traffic_price_cents: 0,
+    agent_id: '',
+  }
+}
+
+/** 接口上游可选的被控节点（选 virtualis 接口后加载）。 */
+const ifaceAgents = ref<{ id: string; name: string; display_name: string; status: string }[]>([])
+const ifaceAgentsLoading = ref(false)
+const ifaceAgentsError = ref('')
+
+/** 拉取所选接口上游的节点列表；失败静默清空（选择器隐藏）。 */
+async function loadIfaceAgents(interfaceId: number) {
+  ifaceAgents.value = []
+  ifaceAgentsError.value = ''
+  if (!interfaceId) return
+  ifaceAgentsLoading.value = true
+  try {
+    const { data } = await http.get<{ items: typeof ifaceAgents.value | null }>(
+      `/admin/interfaces/${interfaceId}/agents`,
+    )
+    ifaceAgents.value = data.items ?? []
+  } catch (err) {
+    ifaceAgents.value = []
+    ifaceAgentsError.value = errorMessage(err)
+  } finally {
+    ifaceAgentsLoading.value = false
   }
 }
 
@@ -266,19 +294,22 @@ function openEdit(item: Product) {
      agreementArticleIds: [...(item.agreement_article_ids ?? [])],
      region: item.region || '',
    })
+  provision.agent_id = item.provision_config?.agent_id ? String(item.provision_config.agent_id) : ''
+  if (item.interface_id) loadIfaceAgents(item.interface_id)
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
   if (item.provision_config) {
-    provision.driver = item.provision_config.driver
-    provision.mode = item.provision_config.mode
+    const pc = item.provision_config as unknown as Record<string, unknown>
+    provision.driver = pc.driver as 'incus' | 'qemu'
+    provision.mode = pc.mode as 'fixed' | 'elastic'
     for (const field of PROVISION_FIELDS) {
-      const range = item.provision_config[field.key]
-      provision[field.key].min = range?.min ?? 0
-      provision[field.key].max = range?.max ?? 0
-      provision[field.key].step = range?.step ?? 1
-      provision[field.key].unit_price_cents = range?.unit_price_cents ?? 0
+      const range = (pc[field.key] ?? {}) as Partial<SpecRange>
+      provision[field.key].min = range.min ?? 0
+      provision[field.key].max = range.max ?? 0
+      provision[field.key].step = range.step ?? 1
+      provision[field.key].unit_price_cents = range.unit_price_cents ?? 0
     }
-    provision.traffic_price_cents = item.provision_config.traffic_price_cents ?? 0
+    provision.traffic_price_cents = (pc.traffic_price_cents as number) ?? 0
   } else {
     Object.assign(provision, emptyProvision())
   }
@@ -501,7 +532,7 @@ async function syncInfo(item: Product) {
 
 /** 把编辑态整理成后端开通配置；流量统一按 GB 保存。 */
 function buildProvisionConfig() {
-  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents'>) => {
+  const range = (key: keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agent_id'>) => {
     const min = provision[key].min
     // 固定模式只有最小值输入框，隐藏的最大值一律收敛为最小值。
     const max = provision.mode === 'fixed' ? min : provision[key].max
@@ -521,15 +552,20 @@ function buildProvisionConfig() {
     bandwidth_mbps: range('bandwidth_mbps'),
     traffic_price_cents: Math.max(provision.traffic_price_cents, 0),
     traffic_gb: range('traffic_gb'),
+    agent_id: Number(provision.agent_id) || 0,
   }
 }
 
-/** 选择接口后清掉传统上游绑定，两者互斥。 */
+/** 选择接口后清掉传统上游绑定，两者互斥；同时拉取该接口上游的节点列表。 */
 function pickInterface(interfaceId: string) {
   form.interfaceId = interfaceId
+  provision.agent_id = ''
   if (interfaceId) {
     form.upstreamPluginId = ''
     form.upstreamProductId = ''
+    loadIfaceAgents(Number(interfaceId))
+  } else {
+    ifaceAgents.value = []
   }
 }
 
@@ -770,6 +806,32 @@ function pickInterface(interfaceId: string) {
 
             <div class="space-y-3">
               <Label>规格配置</Label>
+              <div v-if="form.interfaceId" class="space-y-2 rounded-md border p-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="w-16 shrink-0 text-sm">部署节点</span>
+                  <Select v-model="provision.agent_id" :disabled="ifaceAgentsLoading">
+                    <SelectTrigger class="w-64">
+                      <SelectValue placeholder="自动分配（推荐）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">自动分配（推荐）</SelectItem>
+                      <SelectItem
+                        v-for="a in ifaceAgents"
+                        :key="a.id"
+                        :value="a.id"
+                        :disabled="a.status !== 'online'"
+                      >
+                        {{ a.display_name || a.name }}{{ a.status !== 'online' ? '（离线）' : '' }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span v-if="ifaceAgentsLoading" class="text-muted-foreground text-xs">加载中…</span>
+                </div>
+                <p class="text-muted-foreground pl-[4.5rem] text-xs">
+                  <template v-if="ifaceAgentsError">节点列表加载失败：{{ ifaceAgentsError }}（将按自动分配开通）</template>
+                  <template v-else>固定该商品实例的落地节点；留空由上游自动分配。买家在购买页仍可自行选择，买家选择优先。</template>
+                </p>
+              </div>
               <div v-for="field in PROVISION_FIELDS" :key="field.key" class="space-y-2 rounded-md border p-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="w-16 shrink-0 text-sm">{{ field.label }}</span>
