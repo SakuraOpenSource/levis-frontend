@@ -142,11 +142,23 @@ const deleting = ref<number | null>(null)
    upstreamProductId: '',
    interfaceId: '',
    agreementArticleId: '',
+   agreementArticleIds: [] as number[],
    region: '',
  })
 
 /** 规格行独立于 form：行数可变，用数组比塞进 reactive 对象更直观。 */
 const specs = ref<Spec[]>([])
+
+/** 勾选/取消一篇协议文章。 */
+function toggleAgreement(id: number, checked: boolean) {
+  const list = form.agreementArticleIds
+  if (checked) {
+    if (!list.includes(id)) list.push(id)
+  } else {
+    const idx = list.indexOf(id)
+    if (idx >= 0) list.splice(idx, 1)
+  }
+}
 /** 与后端 maxSpecs 一致，超出时提前挡掉而不是等 400。 */
 const MAX_SPECS = 20
 
@@ -227,6 +239,7 @@ function openCreate() {
      upstreamProductId: '',
      interfaceId: '',
      agreementArticleId: '',
+     agreementArticleIds: [],
      region: '',
    })
   Object.assign(provision, emptyProvision())
@@ -250,6 +263,7 @@ function openEdit(item: Product) {
      upstreamProductId: item.upstream_product_id || '',
      interfaceId: item.interface_id ? String(item.interface_id) : '',
      agreementArticleId: item.agreement_article_id ? String(item.agreement_article_id) : '',
+     agreementArticleIds: [...(item.agreement_article_ids ?? [])],
      region: item.region || '',
    })
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
@@ -305,6 +319,7 @@ async function save() {
        interface_id: Number(form.interfaceId) || 0,
        provision_config: form.interfaceId ? buildProvisionConfig() : null,
        agreement_article_id: form.agreementArticleId ? Number(form.agreementArticleId) : null,
+       agreement_article_ids: form.agreementArticleIds,
        region: form.region,
      }
     if (editing.value) {
@@ -880,20 +895,28 @@ function pickInterface(interfaceId: string) {
              <Textarea id="p-desc" v-model="form.description" rows="3" />
            </div>
            <div class="space-y-2">
-             <Label for="p-agreement">购买协议（选填）</Label>
-             <Select v-model="form.agreementArticleId">
-               <SelectTrigger id="p-agreement">
-                 <SelectValue placeholder="无需协议" />
-               </SelectTrigger>
-               <SelectContent>
-                 <SelectItem value="">无需协议</SelectItem>
-                 <SelectItem v-for="article in agreementArticles" :key="article.id" :value="String(article.id)">
-                   {{ article.title }}<span v-if="article.status !== 'published'" class="text-muted-foreground">（草稿）</span>
-                 </SelectItem>
-               </SelectContent>
-             </Select>
-             <p class="text-muted-foreground text-xs">选择后，用户购买该商品前必须勾选同意该协议；买家仅能查看已发布文章</p>
-           </div>
+            <Label>购买协议（可多选）</Label>
+            <div class="max-h-40 space-y-1 overflow-y-auto rounded-md border p-3">
+              <p v-if="agreementArticles.length === 0" class="text-muted-foreground text-xs">
+                暂无可用文章，请先在知识库创建并发布
+              </p>
+              <label
+                v-for="article in agreementArticles"
+                :key="article.id"
+                class="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent"
+              >
+                <input
+                  type="checkbox"
+                  class="size-4"
+                  :checked="form.agreementArticleIds.includes(article.id)"
+                  @change="toggleAgreement(article.id, ($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ article.title }}</span>
+                <span v-if="article.status !== 'published'" class="text-muted-foreground text-xs">（草稿，买家不可见）</span>
+              </label>
+            </div>
+            <p class="text-muted-foreground text-xs">勾选后，用户购买该商品前必须阅读并同意全部勾选的协议；买家仅能查看已发布文章</p>
+          </div>
 
           <div class="space-y-2">
             <Label>{{ t('admin.productSpecs') }}</Label>

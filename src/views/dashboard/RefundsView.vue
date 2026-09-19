@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RotateCcw } from 'lucide-vue-next'
 
@@ -15,19 +15,24 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ApiError, errorMessage } from '@/lib/api'
-import { refundApi } from '@/lib/endpoints'
+import { refundApi, serviceApi } from '@/lib/endpoints'
 import { formatCents, formatDateTime } from '@/lib/utils'
-import type { RefundRequest, RefundStatus } from '@/lib/types'
+import type { RefundRequest, RefundStatus, Service } from '@/lib/types'
 
 /**
- * 用户退款中心：发起退款申请（按已支付订单/支付记录）、查看进度、
- * 撤回待审申请。策略判定由后端即时给出：自动通过的会直接退款。
+ * 用户退款中心：按已开通的产品发起退款（订单与支付记录由后端自动解析）、
+ * 查看进度、撤回待审申请。策略判定由后端即时给出。
  */
 
 const { t } = useI18n()
@@ -36,12 +41,19 @@ const items = ref<RefundRequest[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-// 申请表单：目标支付记录 ID + 原因。订单号可留空。
+// 可选产品（进行中或已停机的都能退，已删的不可退）。
+const services = ref<Service[]>([])
+const servicesLoading = ref(false)
+
 const open = ref(false)
 const submitting = ref(false)
 const formError = ref<string | null>(null)
-const paymentId = ref('')
+const serviceId = ref('')
 const reason = ref('')
+
+const selectableServices = computed(() =>
+  services.value.filter((s) => s.status !== 'terminated' && s.status !== 'failed'),
+)
 
 const STATUS_VARIANT: Record<RefundStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   pending: 'secondary',
@@ -65,16 +77,30 @@ async function load() {
   }
 }
 
+async function openDialog() {
+  open.value = true
+  servicesLoading.value = true
+  try {
+    const page = await serviceApi.list()
+    services.value = page.items ?? []
+  } catch {
+    services.value = []
+  } finally {
+    servicesLoading.value = false
+  }
+}
+
 async function submit() {
   formError.value = null
+  if (!serviceId.value) {
+    formError.value = t('refund.selectServiceRequired')
+    return
+  }
   submitting.value = true
   try {
-    const payload: { payment_id?: number; reason: string } = { reason: reason.value.trim() }
-    const pid = Number(paymentId.value)
-    if (pid > 0) payload.payment_id = pid
-    await refundApi.create(payload)
+    await refundApi.create({ service_id: Number(serviceId.value), reason: reason.value.trim() })
     open.value = false
-    paymentId.value = ''
+    serviceId.value = ''
     reason.value = ''
     await load()
   } catch (err) {
@@ -93,6 +119,10 @@ async function cancel(id: number) {
   }
 }
 
+function serviceLabel(s: Service) {
+  return `#${s.id} ${s.name}`
+}
+
 onMounted(load)
 </script>
 
@@ -103,29 +133,31 @@ onMounted(load)
         <h1 class="text-2xl font-semibold tracking-tight">{{ t('refund.title') }}</h1>
         <p class="text-muted-foreground text-sm">{{ t('refund.subtitle') }}</p>
       </div>
-      <Dialog v-model:open="open">
-        <DialogTrigger as-child>
-          <Button>
-            <RotateCcw class="mr-1 size-4" />
-            {{ t('refund.new') }}
-          </Button>
-        </DialogTrigger>
+      <Dialog v-model:open="open" @update:open="(v: boolean) => v && openDialog()">
+        <Button @click="openDialog">
+          <RotateCcw class="mr-1 size-4" />
+          {{ t('refund.new') }}
+        </Button>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{{ t('refund.new') }}</DialogTitle>
-            <DialogDescription>{{ t('refund.newHint') }}</DialogDescription>
+            <DialogDescription>{{ t('refund.newHintService') }}</DialogDescription>
           </DialogHeader>
           <div class="space-y-4">
             <div class="space-y-2">
-              <Label for="refund-payment">{{ t('refund.paymentId') }}</Label>
-              <Input
-                id="refund-payment"
-                v-model="paymentId"
-                type="number"
-                min="1"
-                :placeholder="t('refund.paymentIdPlaceholder')"
-              />
-              <p class="text-muted-foreground text-xs">{{ t('refund.paymentIdHint') }}</p>
+              <Label for="refund-service">{{ t('refund.selectService') }}</Label>
+              <Select v-model="serviceId">
+                <SelectTrigger id="refund-service">
+                  <SelectValue :placeholder="t('refund.selectServicePlaceholder')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-if="servicesLoading" value="__loading" disabled>{{ t('common.loading') }}</SelectItem>
+                  <SelectItem v-for="s in selectableServices" :key="s.id" :value="String(s.id)">
+                    {{ serviceLabel(s) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-muted-foreground text-xs">{{ t('refund.selectServiceHint') }}</p>
             </div>
             <div class="space-y-2">
               <Label for="refund-reason">{{ t('refund.reason') }}</Label>
@@ -141,7 +173,7 @@ onMounted(load)
           </div>
           <DialogFooter>
             <Button variant="outline" @click="open = false">{{ t('common.cancel') }}</Button>
-            <Button :disabled="submitting || !reason.trim()" @click="submit">
+            <Button :disabled="submitting || !reason.trim() || !serviceId" @click="submit">
               {{ t('common.submit') }}
             </Button>
           </DialogFooter>

@@ -85,6 +85,8 @@ export interface Spec {
    provision_config: ProvisionConfig | null
    /** 指向知识库文章：非空表示购买该商品前必须阅读并同意该协议。 */
    agreement_article_id: number | null
+   /** 购买协议多选：购买前必须同意全部勾选文章；与单选字段并存。 */
+   agreement_article_ids: number[] | null
    /** 地区代码，'' 表示未设置，展示时经 regionInfo 解析。 */
    region: string
  }
@@ -758,8 +760,10 @@ export interface ProductInput {
   upstream_product_id: string
   interface_id?: number
   provision_config?: ProvisionConfig | null
-   /** 璐拱鍗忚鏂囩珷 ID锛歯ull 琛ㄧず鏃犻渶鍚屾剰锛涘紩鐢ㄦ枃绔犲繀椤诲瓨鍦ㄣ€?*/
+   /** 购买协议文章 ID：null 表示无需同意；引用文章必须存在。 */
    agreement_article_id?: number | null
+   /** 购买协议多选：购买前必须同意全部勾选文章；与单选字段并存。 */
+   agreement_article_ids?: number[]
    /** 地区代码，'' 表示未设置。 */
    region?: string
  }

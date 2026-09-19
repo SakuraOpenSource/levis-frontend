@@ -242,6 +242,11 @@ export const articleApi = {
     const { data } = await http.get<Article[]>('/articles')
     return data
   },
+  /** 批量按 ID 解析已发布文章（购买页多选协议用），缺失项静默跳过。 */
+  async getByIds(ids: number[]) {
+    const { data } = await http.post<Article[]>('/articles/by-ids', { ids })
+    return data
+  },
   async getById(id: number) {
     const { data } = await http.get<Article>(`/articles/by-id/${id}`)
     return data
@@ -454,7 +459,7 @@ export const refundApi = {
     const { data } = await http.get<Page<RefundRequest>>('/refunds', { params: query })
     return data
   },
-  async create(payload: { payment_id?: number; order_id?: number; reason: string }) {
+  async create(payload: { service_id?: number; payment_id?: number; order_id?: number; reason: string }) {
     const { data } = await http.post<RefundRequest>('/refunds', payload)
     return data
   },

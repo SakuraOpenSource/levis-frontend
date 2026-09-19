@@ -43,10 +43,20 @@ const toast = useToast()
  const error = ref<string | null>(null)
  const submitting = ref(false)
  const formError = ref<string | null>(null)
- /** 购买协议：商品绑定 agreement_article_id 时必须勾选同意才能下单。 */
+ /** 购买协议：商品绑定了协议文章（单选或多选）时必须勾选同意才能下单。 */
  const agreed = ref(false)
+ /** 单选协议（旧字段，兼容）。 */
  const agreement = ref<Article | null>(null)
- const agreementRequired = computed(() => product.value?.agreement_article_id != null)
+ /** 多选协议：按 agreement_article_ids 批量解析。 */
+ const agreements = ref<Article[]>([])
+ const allAgreements = computed(() => {
+   const list = [...agreements.value]
+   if (agreement.value && !list.some((a) => a.id === agreement.value!.id)) list.unshift(agreement.value)
+   return list
+ })
+ const agreementRequired = computed(
+   () => product.value?.agreement_article_id != null || (product.value?.agreement_article_ids?.length ?? 0) > 0,
+ )
  const agreementTitle = computed(() => agreement.value?.title || t('agreement.fallbackTitle'))
  const agreementSlug = computed(() => agreement.value?.slug ?? '')
 
@@ -164,6 +174,17 @@ const selectedTotalCents = computed(() => selectedUnitPriceCents.value * Math.ma
      agreement.value = null
    }
  }
+
+ /**
+  * 批量解析多选协议：失败的静默降级为空列表，购买 gating 仍按商品字段生效。
+  */
+ async function loadAgreements(articleIds: number[]) {
+   try {
+     agreements.value = await articleApi.getByIds(articleIds)
+   } catch {
+     agreements.value = []
+   }
+ }
 async function loadImages() {
   imagesLoading.value = true
   imagesError.value = null
@@ -247,6 +268,7 @@ onMounted(async () => {
     }
      initPicks(item.provision_config)
      if (item.agreement_article_id != null) await loadAgreement(item.agreement_article_id)
+     if ((item.agreement_article_ids?.length ?? 0) > 0) await loadAgreements(item.agreement_article_ids ?? [])
     await loadImages()
   } catch (err) {
     error.value = errorMessage(err)
@@ -392,19 +414,32 @@ onMounted(async () => {
            type="checkbox"
            class="accent-primary mt-1 size-4 shrink-0 cursor-pointer"
          />
-         <p class="text-sm leading-6">
+         <div class="text-sm leading-6">
            <Label for="buy-agree" class="cursor-pointer font-normal">
-             {{ t('agreement.agree', { title: agreementTitle }) }}
+             <template v-if="allAgreements.length > 1">
+               {{ t('agreement.agreeMultiple', { count: allAgreements.length }) }}
+             </template>
+             <template v-else>{{ t('agreement.agree', { title: agreementTitle }) }}</template>
            </Label>
+           <span v-if="allAgreements.length > 1" class="mx-1 text-muted-foreground">：</span>
+           <template v-if="allAgreements.length > 1">
+             <RouterLink
+               v-for="(a, i) in allAgreements"
+               :key="a.id"
+               :to="{ name: 'article-detail', params: { slug: a.slug } }"
+               target="_blank"
+               class="text-primary mr-2 text-xs underline underline-offset-4"
+             >{{ a.title }}<span v-if="i < allAgreements.length - 1">、</span></RouterLink>
+           </template>
            <RouterLink
-             v-if="agreementSlug"
+             v-else-if="agreementSlug"
              :to="{ name: 'article-detail', params: { slug: agreementSlug } }"
              target="_blank"
              class="text-primary ml-2 text-xs whitespace-nowrap underline underline-offset-4"
            >
              {{ t('agreement.viewAgreement') }}
            </RouterLink>
-         </p>
+         </div>
        </div>
        <ErrorAlert :message="formError" />
        <Button

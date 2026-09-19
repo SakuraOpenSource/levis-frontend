@@ -345,6 +345,7 @@ onMounted(() => load())
                    @change="toggleAll(($event.target as HTMLInputElement).checked)"
                  />
                </TableHead>
+               <TableHead class="w-14 text-xs">ID</TableHead>
                 <TableHead>{{ t('admin.username') }}</TableHead>
                  <TableHead>{{ t('admin.email') }}</TableHead>
                 <TableHead>{{ t('admin.role') }}</TableHead>
@@ -355,7 +356,7 @@ onMounted(() => load())
               </TableRow>
             </TableHeader>
             <TableBody>
-               <TableEmpty v-if="!items.length" :colspan="8">{{ t('common.empty') }}</TableEmpty>
+               <TableEmpty v-if="!items.length" :colspan="9">{{ t('common.empty') }}</TableEmpty>
               <TableRow v-for="item in items" v-else :key="item.id">
                  <TableCell>
                    <input
@@ -366,6 +367,7 @@ onMounted(() => load())
                      @change="toggleOne(item.id, ($event.target as HTMLInputElement).checked)"
                    />
                  </TableCell>
+                <TableCell class="text-muted-foreground text-xs tabular">{{ item.id }}</TableCell>
                 <TableCell class="font-medium">{{ item.username }}</TableCell>
                 <TableCell class="max-w-52 truncate">{{ item.email }}</TableCell>
                 <TableCell>
