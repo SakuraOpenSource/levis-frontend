@@ -159,6 +159,59 @@ export interface CartView {
   total_cents: number
 }
 
+export type CouponStatus = 'active' | 'disabled'
+export type CouponType = 'percent' | 'fixed'
+
+export interface Coupon extends Timestamps {
+  code: string
+  name: string
+  type: CouponType
+  percent_off: number
+  amount_cents: number
+  max_discount_cents: number
+  min_order_cents: number
+  status: CouponStatus
+  starts_at: string | null
+  expires_at: string | null
+  max_uses: number
+  max_uses_per_user: number
+  new_user_only: boolean
+  used_count: number
+  product_ids: number[] | null
+}
+
+/** 优惠码创建/更新入参；时间字段传 ISO 字符串或 null（不设边界）。 */
+export interface CouponInput {
+  code?: string
+  name: string
+  type: CouponType
+  percent_off: number
+  amount_cents: number
+  max_discount_cents: number
+  min_order_cents: number
+  status: CouponStatus
+  starts_at: string | null
+  expires_at: string | null
+  max_uses: number
+  max_uses_per_user: number
+  new_user_only: boolean
+  product_ids: number[]
+}
+
+/** 购物车优惠码试算结果。 */
+export interface CartCouponPreview {
+  items: CartItem[] | null
+  subtotal_cents: number
+  total_cents: number
+  coupon?: {
+    code: string
+    name: string
+    type: CouponType
+    discount_cents: number
+    subtotal_cents: number
+  }
+}
+
 export interface OrderItem extends Timestamps {
   order_id: number
   product_id: number
@@ -173,6 +226,9 @@ export interface Order extends Timestamps {
   user_id: number
   status: OrderStatus
   total_cents: number
+  /** 使用的优惠码快照；空串 = 未使用。total_cents 已是减免后金额。 */
+  coupon_code: string
+  coupon_discount_cents: number
   paid_at: string | null
   items?: OrderItem[]
 }

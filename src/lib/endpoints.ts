@@ -11,9 +11,13 @@ import { http, postForm } from './api'
  Bootstrap,
  CaptchaChallenge,
  CaptchaSettings,
+ CartCouponPreview,
  CartView,
   Category,
   CategoryInput,
+  Coupon,
+  CouponInput,
+  CouponStatus,
   CreateUserInput,
   DatabaseConfig,
   EmailSettings,
@@ -285,6 +289,11 @@ export const cartApi = {
     const { data } = await http.delete<CartView>(`/cart/items/${itemId}`)
     return data
   },
+  /** 优惠码试算：只读不核销，返回小计/减免/应付。 */
+  async couponPreview(code: string) {
+    const { data } = await http.post<CartCouponPreview>('/cart/coupon/preview', { code })
+    return data
+  },
 }
 
  /** 外部支付。order/invoice 用途的第 4 个参数是同步抵扣的余额（balance_cents）；recharge 用途则是充值金额（amount_cents，后端按 AmountCents 校验且拒绝余额抵扣）。 */
@@ -323,8 +332,8 @@ export const cartApi = {
  }
 /** 订单与支付。agree 表示已阅读并同意商品绑定的购买协议。 */
 export const orderApi = {
-  async create(agree = false) {
-    const { data } = await http.post<Order>('/orders', { agree })
+  async create(agree = false, couponCode = '') {
+    const { data } = await http.post<Order>('/orders', { agree, coupon_code: couponCode })
     return data
   },
   async list(query: PageQuery = {}) {
@@ -779,6 +788,32 @@ export const adminApi = {
   /** 仍被商品引用为购买协议时后端会 409 拒绝。 */
   async deleteArticle(id: number) {
     await http.delete(`/admin/articles/${id}`)
+  },
+  /** 优惠码列表，status 为空时不过滤。 */
+  async coupons(query: PageQuery & { status?: CouponStatus | '' } = {}) {
+    const params = { ...query, status: query.status || undefined }
+    const { data } = await http.get<Page<Coupon>>('/admin/coupons', { params })
+    return data
+  },
+  async coupon(id: number) {
+    const { data } = await http.get<Coupon>(`/admin/coupons/${id}`)
+    return data
+  },
+  async createCoupon(payload: CouponInput) {
+    const { data } = await http.post<Coupon>('/admin/coupons', payload)
+    return data
+  },
+  /** 批量自动生成优惠码；入参的 code 字段被后端忽略。 */
+  async generateCoupons(payload: CouponInput & { count: number }) {
+    const { data } = await http.post<{ items: Coupon[] }>('/admin/coupons/generate', payload)
+    return data.items ?? []
+  },
+  async updateCoupon(id: number, payload: CouponInput) {
+    const { data } = await http.patch<Coupon>(`/admin/coupons/${id}`, payload)
+    return data
+  },
+  async deleteCoupon(id: number) {
+    await http.delete(`/admin/coupons/${id}`)
   },
   async paymentPlugins() {
     const { data } = await http.get<{ items: PaymentPlugin[] }>('/admin/payment-plugins')
