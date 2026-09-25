@@ -140,6 +140,14 @@ onMounted(async () => {
 
             <Separator />
 
+            <div v-if="order.coupon_code" class="flex items-center justify-between text-sm">
+              <span class="flex items-center gap-1.5">
+                {{ t('cart.coupon.discount') }}
+                <span class="text-muted-foreground font-mono text-xs">{{ order.coupon_code }}</span>
+              </span>
+              <Money :cents="-order.coupon_discount_cents" class="text-success font-medium" />
+            </div>
+
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium">{{ t('cart.total') }}</span>
               <Money :cents="order.total_cents" class="text-xl font-semibold" />

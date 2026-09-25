@@ -198,6 +198,16 @@ export default {
     total: '合计',
     checkout: '去结算',
     removed: '已移除',
+    coupon: {
+      label: '优惠码',
+      placeholder: '输入优惠码',
+      apply: '使用',
+      applying: '验证中…',
+      remove: '不使用优惠码',
+      discount: '优惠减免',
+      payable: '应付总额',
+      invalid: '优惠码不可用',
+    },
   },
   checkout: {
     title: '结账',

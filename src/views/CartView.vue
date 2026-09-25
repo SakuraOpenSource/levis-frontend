@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { Loader2, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-vue-next'
+import { BadgePercent, Loader2, Minus, Plus, ShoppingCart, TicketX, Trash2 } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -10,11 +10,12 @@ import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useCycleLabel } from '@/composables/useCycleLabel'
 import { useToast } from '@/composables/useToast'
 import { errorMessage } from '@/lib/api'
-import { orderApi } from '@/lib/endpoints'
+import { cartApi, orderApi } from '@/lib/endpoints'
 import type { CartItem } from '@/lib/types'
 import { useCartStore } from '@/stores/cart'
 
@@ -38,6 +39,7 @@ async function changeQuantity(item: CartItem, delta: number) {
   busy.value = item.id
   try {
     await cart.updateQuantity(item.id, next)
+    await revalidateCoupon()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -50,6 +52,7 @@ async function remove(item: CartItem) {
   try {
     await cart.remove(item.id)
     toast.success(t('cart.removed'))
+    await revalidateCoupon()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -57,11 +60,58 @@ async function remove(item: CartItem) {
   }
 }
 
+/** 优惠码输入与试算状态。applied 非空 = 已生效的码（下单随单提交）。 */
+const couponInput = ref('')
+const couponChecking = ref(false)
+const appliedCoupon = ref<{ code: string; name: string; discount_cents: number } | null>(null)
+const couponError = ref<string | null>(null)
+
+/** 验证优惠码：只试算不核销，真正占次数在下单事务里。 */
+async function applyCoupon() {
+  const code = couponInput.value.trim()
+  if (!code) return
+  couponChecking.value = true
+  couponError.value = null
+  try {
+    const view = await cartApi.couponPreview(code)
+    appliedCoupon.value = view.coupon ?? null
+    if (!appliedCoupon.value) {
+      couponError.value = t('cart.coupon.invalid')
+    }
+  } catch (err) {
+    appliedCoupon.value = null
+    couponError.value = errorMessage(err)
+  } finally {
+    couponChecking.value = false
+  }
+}
+
+/** 移除已应用的优惠码。 */
+function removeCoupon() {
+  appliedCoupon.value = null
+  couponError.value = null
+  couponInput.value = ''
+}
+
+/** 购物车内容变化后已应用的优惠码需要重新验证（参与商品可能已被移除）。 */
+async function revalidateCoupon() {
+  if (!appliedCoupon.value) return
+  const code = appliedCoupon.value.code
+  appliedCoupon.value = null
+  try {
+    const view = await cartApi.couponPreview(code)
+    if (view.coupon) appliedCoupon.value = view.coupon
+  } catch {
+    // 失效（如门槛不再满足）就静默移除，不打断用户的数量调整。
+    couponInput.value = ''
+  }
+}
+
 /** 下单后购物车已被后端清空，跳到结账页支付。 */
 async function checkout() {
   creating.value = true
   try {
-    const order = await orderApi.create()
+    const order = await orderApi.create(false, appliedCoupon.value?.code ?? '')
     cart.clear()
     await router.push({ name: 'checkout', params: { id: order.id } })
   } catch (err) {
@@ -161,9 +211,60 @@ onMounted(async () => {
 
           <Separator />
 
+          <!-- 优惠码：未应用时显示输入框，已应用时显示减免摘要。 -->
+          <div v-if="!appliedCoupon" class="space-y-2">
+            <div class="flex max-w-sm items-center gap-2">
+              <div class="relative flex-1">
+                <BadgePercent class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                <Input
+                  v-model="couponInput"
+                  :placeholder="t('cart.coupon.placeholder')"
+                  class="pl-8 uppercase"
+                  autocomplete="off"
+                  :disabled="couponChecking"
+                  @keyup.enter="applyCoupon"
+                />
+              </div>
+              <Button type="button" variant="outline" :disabled="couponChecking || !couponInput.trim()" @click="applyCoupon">
+                <Loader2 v-if="couponChecking" class="animate-spin" />
+                {{ couponChecking ? t('cart.coupon.applying') : t('cart.coupon.apply') }}
+              </Button>
+            </div>
+            <p v-if="couponError" class="text-destructive text-xs">{{ couponError }}</p>
+          </div>
+          <div v-else class="bg-muted/50 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2">
+            <div class="flex items-center gap-2 text-sm">
+              <BadgePercent class="text-success size-4" />
+              <span class="font-mono font-medium">{{ appliedCoupon.code }}</span>
+              <span v-if="appliedCoupon.name" class="text-muted-foreground text-xs">{{ appliedCoupon.name }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-sm">
+                {{ t('cart.coupon.discount') }}
+                <Money :cents="-appliedCoupon.discount_cents" class="text-success font-medium" />
+              </span>
+              <Button type="button" variant="ghost" size="sm" class="h-7 px-2 text-xs" @click="removeCoupon">
+                <TicketX class="size-3.5" />
+                {{ t('cart.coupon.remove') }}
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium">{{ t('cart.total') }}</span>
-            <Money :cents="cart.totalCents" class="text-xl font-semibold" />
+            <div class="text-right">
+              <Money
+                v-if="appliedCoupon"
+                :cents="cart.totalCents"
+                class="text-muted-foreground text-sm line-through"
+              />
+              <Money
+                :cents="appliedCoupon ? cart.totalCents - appliedCoupon.discount_cents : cart.totalCents"
+                class="text-xl font-semibold"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
