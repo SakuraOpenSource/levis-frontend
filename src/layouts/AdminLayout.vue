@@ -17,6 +17,7 @@ import {
   Settings,
   Store,
   Ticket,
+  TicketPercent,
   Users,
   Wallet,
 } from 'lucide-vue-next'
@@ -57,6 +58,7 @@ const items = computed<NavItem[]>(() => [
     to: { name: 'admin-categories' },
   },
   { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
+  { key: 'coupons', label: t('adminNav.coupons'), icon: TicketPercent, to: { name: 'admin-coupons' } },
   { key: 'services', label: t('adminNav.business'), icon: Server, to: { name: 'admin-services' } },
   { key: 'articles', label: t('adminNav.articles'), icon: FileText, to: { name: 'admin-articles' } },
   { key: 'interfaces', label: '接口管理', icon: Cable, to: { name: 'admin-interfaces' } },

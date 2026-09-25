@@ -203,6 +203,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/ArticlesView.vue'),
       },
       {
+        path: 'coupons',
+        name: 'admin-coupons',
+        component: () => import('@/views/admin/CouponsView.vue'),
+      },
+      {
         path: 'refunds',
         name: 'admin-refunds',
         component: () => import('@/views/admin/RefundsView.vue'),
