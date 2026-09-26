@@ -1,8 +1,8 @@
 <script setup lang="ts">
- import { computed, onMounted, reactive, ref } from 'vue'
+ import { computed, onMounted, reactive, ref, watch } from 'vue'
  import { useI18n } from 'vue-i18n'
  import { useRoute, useRouter } from 'vue-router'
- import { Loader2, Minus, Plus } from 'lucide-vue-next'
+ import { Loader2, Minus, Plus, BadgePercent, TicketX } from 'lucide-vue-next'
 
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -165,6 +165,75 @@ const provisionExtraCents = computed(() => {
 const selectedUnitPriceCents = computed(() => (product.value?.price_cents ?? 0) + provisionExtraCents.value)
 const selectedTotalCents = computed(() => selectedUnitPriceCents.value * Math.max(quantity.value, 1))
 
+/** 优惠码输入与试算状态。applied 非空 = 已生效的码（随直购提交）。 */
+const couponInput = ref('')
+const couponChecking = ref(false)
+const appliedCoupon = ref<{ code: string; name: string; discount_cents: number } | null>(null)
+const couponError = ref<string | null>(null)
+
+/** 当前选配的直购明细（试算与提交共用同一份参数）。 */
+function currentLine() {
+  return {
+    product_id: product.value!.id,
+    quantity: Math.max(quantity.value, 1),
+    billing_cycle: product.value!.billing_cycle,
+    options: {
+      driver: cfg.value!.driver,
+      cpu: formatSpec(picks.cpu),
+      memory_mb: formatSpec(picks.memory_mb),
+      disk_gb: formatSpec(picks.disk_gb),
+      bandwidth_mbps: formatSpec(picks.bandwidth_mbps),
+      traffic_gb: formatSpec(picks.traffic_gb),
+      image_id: selectedImage.value,
+      image_name: images.value.find((item) => item.id === selectedImage.value)?.name ?? '',
+      ...(selectedAgent.value ? { agent_id: selectedAgent.value } : {}),
+    },
+  }
+}
+
+/** 验证优惠码：只试算不核销，真正占次数在直购下单事务里。 */
+async function applyCoupon() {
+  const code = couponInput.value.trim()
+  if (!code || !product.value || !cfg.value) return
+  couponChecking.value = true
+  couponError.value = null
+  try {
+    const view = await orderApi.buyNowCouponPreview({ ...currentLine(), code })
+    appliedCoupon.value = view.coupon ?? null
+    if (!appliedCoupon.value) couponError.value = t('cart.coupon.invalid')
+  } catch (err) {
+    appliedCoupon.value = null
+    couponError.value = errorMessage(err)
+  } finally {
+    couponChecking.value = false
+  }
+}
+
+/** 移除已应用的优惠码。 */
+function removeCoupon() {
+  appliedCoupon.value = null
+  couponError.value = null
+  couponInput.value = ''
+}
+
+/** 选配/数量变化后已应用的码需重新验证（减免基数可能已变）。 */
+async function revalidateCoupon() {
+  if (!appliedCoupon.value || !product.value || !cfg.value) return
+  const code = appliedCoupon.value.code
+  appliedCoupon.value = null
+  try {
+    const view = await orderApi.buyNowCouponPreview({ ...currentLine(), code })
+    if (view.coupon) appliedCoupon.value = view.coupon
+  } catch {
+    couponInput.value = ''
+  }
+}
+
+/** 试算后的应付总额（无码 = 原总价）。 */
+const payableCents = computed(() =>
+  appliedCoupon.value ? selectedTotalCents.value - appliedCoupon.value.discount_cents : selectedTotalCents.value,
+)
+
  /**
   * 协议标题按需解析：公开文章接口只支持按 slug 读取，而商品只暴露数字 ID，
   * 因此这里用管理端接口按 ID 读取标题与 slug；普通买家无管理权限时会失败，
@@ -249,22 +318,9 @@ function agentLabel(a: UpstreamAgent) {
   submitting.value = true
   try {
     const order = await orderApi.buyNow({
-      product_id: product.value.id,
-      quantity: quantity.value,
-       billing_cycle: product.value.billing_cycle,
-       agree: agreed.value,
-      options: {
-        driver: cfg.value.driver,
-        // formatSpec 统一去浮点尾差：0.5000000000000001 会提交成 "0.5"。
-        cpu: formatSpec(picks.cpu),
-        memory_mb: formatSpec(picks.memory_mb),
-        disk_gb: formatSpec(picks.disk_gb),
-        bandwidth_mbps: formatSpec(picks.bandwidth_mbps),
-        traffic_gb: formatSpec(picks.traffic_gb),
-        image_id: selectedImage.value,
-        image_name: images.value.find((item) => item.id === selectedImage.value)?.name ?? '',
-        ...(selectedAgent.value ? { agent_id: selectedAgent.value } : {}),
-      },
+      ...currentLine(),
+      agree: agreed.value,
+      ...(appliedCoupon.value ? { coupon_code: appliedCoupon.value.code } : {}),
     })
     toast.success('订单已创建，请完成支付')
     await router.push({ name: 'checkout', params: { id: String(order.id) } })
@@ -274,6 +330,11 @@ function agentLabel(a: UpstreamAgent) {
     submitting.value = false
   }
 }
+
+/** 数量 / 弹性选配变化 → 已应用的优惠码重算减免。 */
+watch([quantity, () => picks.cpu, () => picks.memory_mb, () => picks.disk_gb, () => picks.bandwidth_mbps, () => picks.traffic_gb], () => {
+  void revalidateCoupon()
+})
 
 onMounted(async () => {
   try {
@@ -427,21 +488,67 @@ onMounted(async () => {
       </Card>
 
       <Card>
-        <CardContent class="flex flex-wrap items-center gap-4">
-          <div class="space-y-1.5">
-            <Label for="buy-quantity">数量</Label>
-            <Input id="buy-quantity" v-model.number="quantity" type="number" min="1" class="w-24" />
+        <CardContent class="space-y-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="space-y-1.5">
+              <Label for="buy-quantity">数量</Label>
+              <Input id="buy-quantity" v-model.number="quantity" type="number" min="1" class="w-24" />
+            </div>
+            <div class="ml-auto text-right">
+              <p class="text-muted-foreground text-xs">
+                基础价（{{ cycleLabel(product.billing_cycle) }}）
+              </p>
+              <Money :cents="product.price_cents" />
+              <p v-if="provisionExtraCents" class="text-muted-foreground text-xs">
+                增量 + <Money :cents="provisionExtraCents" /> / 份
+              </p>
+              <p class="text-muted-foreground text-xs">总价</p>
+              <Money class="text-xl font-semibold" :class="appliedCoupon ? 'line-through text-muted-foreground' : ''" :cents="selectedTotalCents" />
+            </div>
           </div>
-          <div class="ml-auto text-right">
-            <p class="text-muted-foreground text-xs">
-              基础价（{{ cycleLabel(product.billing_cycle) }}）
-            </p>
-            <Money :cents="product.price_cents" />
-            <p v-if="provisionExtraCents" class="text-muted-foreground text-xs">
-              增量 + <Money :cents="provisionExtraCents" /> / 份
-            </p>
-            <p class="text-muted-foreground text-xs">总价</p>
-            <Money class="text-xl font-semibold" :cents="selectedTotalCents" />
+
+          <!-- 优惠码：未应用时显示输入框，已应用时显示减免摘要。 -->
+          <div v-if="!appliedCoupon" class="space-y-2">
+            <div class="flex max-w-sm items-center gap-2">
+              <div class="relative flex-1">
+                <BadgePercent class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                <Input
+                  v-model="couponInput"
+                  :placeholder="t('cart.coupon.placeholder')"
+                  class="pl-8 uppercase"
+                  autocomplete="off"
+                  :disabled="couponChecking"
+                  @keyup.enter="applyCoupon"
+                />
+              </div>
+              <Button type="button" variant="outline" :disabled="couponChecking || !couponInput.trim()" @click="applyCoupon">
+                <Loader2 v-if="couponChecking" class="animate-spin" />
+                {{ couponChecking ? t('cart.coupon.applying') : t('cart.coupon.apply') }}
+              </Button>
+            </div>
+            <p v-if="couponError" class="text-destructive text-xs">{{ couponError }}</p>
+          </div>
+          <div v-else class="bg-muted/50 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2">
+            <div class="flex items-center gap-2 text-sm">
+              <BadgePercent class="text-success size-4" />
+              <span class="font-mono font-medium">{{ appliedCoupon.code }}</span>
+              <span v-if="appliedCoupon.name" class="text-muted-foreground text-xs">{{ appliedCoupon.name }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-sm">
+                {{ t('cart.coupon.discount') }}
+                <Money :cents="-appliedCoupon.discount_cents" class="text-success font-medium" />
+              </span>
+              <Button type="button" variant="ghost" size="sm" class="h-7 px-2 text-xs" @click="removeCoupon">
+                <TicketX class="size-3.5" />
+                {{ t('cart.coupon.remove') }}
+              </Button>
+            </div>
+          </div>
+
+          <div v-if="appliedCoupon" class="flex items-center justify-between">
+            <span class="text-sm font-medium">{{ t('cart.coupon.payable') }}</span>
+            <Money :cents="payableCents" class="text-xl font-semibold" />
           </div>
         </CardContent>
       </Card>

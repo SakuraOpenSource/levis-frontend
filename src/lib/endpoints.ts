@@ -9,6 +9,7 @@ import { http, postForm } from './api'
  ArticleInput,
  ArticleStatus,
  Bootstrap,
+ BuyNowCouponView,
  CaptchaChallenge,
  CaptchaSettings,
  CartCouponPreview,
@@ -344,8 +345,13 @@ export const orderApi = {
     const { data } = await http.get<Order>(`/orders/${id}`)
     return data
   },
-  async buyNow(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string>; agree?: boolean }) {
+  async buyNow(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string>; agree?: boolean; coupon_code?: string }) {
     const { data } = await http.post<Order>('/orders/direct', payload)
+    return data
+  },
+  /** 直购试算：购买页输入优惠码后实时算减免，只读不核销。 */
+  async buyNowCouponPreview(payload: { product_id: number; quantity: number; billing_cycle?: string; options?: Record<string, string>; code: string }) {
+    const { data } = await http.post<BuyNowCouponView>('/orders/direct/coupon/preview', payload)
     return data
   },
   async pay(id: number) {

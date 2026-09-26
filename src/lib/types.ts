@@ -212,6 +212,19 @@ export interface CartCouponPreview {
   }
 }
 
+/** 直购（立即购买）叠加优惠码后的试算视图。 */
+export interface BuyNowCouponView {
+  subtotal_cents: number
+  total_cents: number
+  coupon?: {
+    code: string
+    name: string
+    type: CouponType
+    discount_cents: number
+    subtotal_cents: number
+  }
+}
+
 export interface OrderItem extends Timestamps {
   order_id: number
   product_id: number
