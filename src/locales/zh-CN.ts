@@ -72,6 +72,11 @@ export default {
   adminNav: {
     title: '管理后台',
     overview: '概览',
+    groupShop: '商品',
+    groupOps: '运营',
+    groupFinance: '财务',
+    groupSupport: '客户',
+    groupSystem: '系统',
     users: '用户管理',
     business: '业务总览',
     categories: '商品分组',

@@ -50,41 +50,53 @@ onMounted(loadPlugins)
 
 const items = computed<NavItem[]>(() => [
   { key: 'overview', label: t('adminNav.overview'), icon: Gauge, to: { name: 'admin' }, exact: true },
-  { key: 'users', label: t('adminNav.users'), icon: Users, to: { name: 'admin-users' } },
   {
-    key: 'categories',
-    label: t('adminNav.categories'),
-    icon: FolderTree,
-    to: { name: 'admin-categories' },
-  },
-  { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
-  { key: 'coupons', label: t('adminNav.coupons'), icon: TicketPercent, to: { name: 'admin-coupons' } },
-  { key: 'services', label: t('adminNav.business'), icon: Server, to: { name: 'admin-services' } },
-  { key: 'articles', label: t('adminNav.articles'), icon: FileText, to: { name: 'admin-articles' } },
-  { key: 'interfaces', label: '接口管理', icon: Cable, to: { name: 'admin-interfaces' } },
-  { key: 'agent-program', label: '代理管理', icon: Crown, to: { name: 'admin-agent-program' } },
-  { key: 'finance', label: t('adminNav.finance'), icon: Wallet, to: { name: 'admin-finance' } },
-  { key: 'refunds', label: t('adminNav.refunds'), icon: RotateCcw, to: { name: 'admin-refunds' } },
-  { key: 'tickets', label: t('adminNav.tickets'), icon: Ticket, to: { name: 'admin-tickets' } },
-  {
-    key: 'verifications',
-    label: t('adminNav.verifications'),
-    icon: IdCard,
-    to: { name: 'admin-verifications' },
-  },
-  { key: 'settings', label: t('adminNav.settings'), icon: Settings, to: { name: 'admin-settings' } },
-  {
-    key: 'plugins',
-    label: t('adminNav.plugins'),
-    icon: Puzzle,
+    key: 'group-shop',
+    label: t('adminNav.groupShop'),
     group: true,
     children: [
-      {
-        key: 'plugin-management',
-        label: t('adminNav.plugins'),
-        icon: Puzzle,
-        to: { name: 'admin-plugins' },
-      },
+      { key: 'categories', label: t('adminNav.categories'), icon: FolderTree, to: { name: 'admin-categories' } },
+      { key: 'products', label: t('adminNav.products'), icon: Package, to: { name: 'admin-products' } },
+      { key: 'coupons', label: t('adminNav.coupons'), icon: TicketPercent, to: { name: 'admin-coupons' } },
+      { key: 'interfaces', label: '接口管理', icon: Cable, to: { name: 'admin-interfaces' } },
+    ],
+  },
+  {
+    key: 'group-ops',
+    label: t('adminNav.groupOps'),
+    group: true,
+    children: [
+      { key: 'services', label: t('adminNav.business'), icon: Server, to: { name: 'admin-services' } },
+      { key: 'agent-program', label: '代理管理', icon: Crown, to: { name: 'admin-agent-program' } },
+      { key: 'articles', label: t('adminNav.articles'), icon: FileText, to: { name: 'admin-articles' } },
+    ],
+  },
+  {
+    key: 'group-finance',
+    label: t('adminNav.groupFinance'),
+    group: true,
+    children: [
+      { key: 'finance', label: t('adminNav.finance'), icon: Wallet, to: { name: 'admin-finance' } },
+      { key: 'refunds', label: t('adminNav.refunds'), icon: RotateCcw, to: { name: 'admin-refunds' } },
+    ],
+  },
+  {
+    key: 'group-support',
+    label: t('adminNav.groupSupport'),
+    group: true,
+    children: [
+      { key: 'users', label: t('adminNav.users'), icon: Users, to: { name: 'admin-users' } },
+      { key: 'tickets', label: t('adminNav.tickets'), icon: Ticket, to: { name: 'admin-tickets' } },
+      { key: 'verifications', label: t('adminNav.verifications'), icon: IdCard, to: { name: 'admin-verifications' } },
+    ],
+  },
+  {
+    key: 'group-system',
+    label: t('adminNav.groupSystem'),
+    group: true,
+    children: [
+      { key: 'settings', label: t('adminNav.settings'), icon: Settings, to: { name: 'admin-settings' } },
+      { key: 'plugin-management', label: t('adminNav.plugins'), icon: Puzzle, to: { name: 'admin-plugins' } },
       ...plugins.value.map((plugin) => ({
         key: `plugin-${plugin.id}`,
         label: plugin.name || plugin.id,

@@ -50,6 +50,7 @@ const items = computed<NavItem[]>(() => [
       { key: 'wallet', label: t('sidebar.wallet'), icon: Wallet, to: { name: 'wallet' } },
       { key: 'agent-program', label: '代理加盟', icon: Crown, to: { name: 'agent-program' } },
       { key: 'invoices', label: t('sidebar.invoices'), icon: FileText, to: { name: 'invoices' } },
+      { key: 'refunds', label: t('sidebar.refunds'), icon: RotateCcw, to: { name: 'refunds' } },
     ],
   },
   {
@@ -65,7 +66,6 @@ const items = computed<NavItem[]>(() => [
       },
       { key: 'tickets', label: t('sidebar.tickets'), icon: Ticket, to: { name: 'tickets' }, exact: true },
       { key: 'knowledge', label: t('sidebar.knowledge'), icon: BookOpen, to: { name: 'knowledge' } },
-      { key: 'refunds', label: t('sidebar.refunds'), icon: RotateCcw, to: { name: 'refunds' } },
     ],
   },
   {
