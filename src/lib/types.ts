@@ -115,6 +115,8 @@ export interface ProvisionConfig {
   agent_id?: number
   /** 允许买家在购买页自选部署节点（覆盖商品固定节点）。 */
   allow_buyer_agent?: boolean
+  /** NAT 实例允许创建的端口转发条数上限；0/缺省表示不限（virtualis 接口商品）。 */
+  max_nat_mappings?: number
 }
 
 /** 「接口管理」里的一条上游接口。 */

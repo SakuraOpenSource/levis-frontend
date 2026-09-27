@@ -68,10 +68,12 @@ interface ProvisionForm {
   agentIdChoice: string
   // 允许买家在购买页自选部署节点。
   allowBuyerAgent: boolean
+  // NAT 端口转发条数上限（virtualis 接口商品）；0 = 不限。
+  maxNatMappings: number
 }
 
 /** 弹性配置编辑器的资源行元数据。CPU 支持小数核数（下限 0.1、可按 0.05 微调）。 */
-type RangeKey = keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agentIdChoice' | 'allowBuyerAgent'>
+type RangeKey = keyof Omit<ProvisionForm, 'driver' | 'mode' | 'traffic_price_cents' | 'agentIdChoice' | 'allowBuyerAgent' | 'maxNatMappings'>
 type RangeKey2 = Exclude<RangeKey, 'agentIdChoice'>
 const PROVISION_FIELDS: { key: RangeKey2; label: string; unit: string; min: number; inputStep: string }[] = [
   { key: 'cpu', label: 'CPU', unit: '核', min: 0.1, inputStep: '0.05' },
@@ -93,6 +95,7 @@ function emptyProvision(): ProvisionForm {
     traffic_price_cents: 0,
     agentIdChoice: '__auto',
     allowBuyerAgent: false,
+    maxNatMappings: 0,
   }
 }
 
@@ -302,6 +305,7 @@ function openEdit(item: Product) {
    })
   provision.agentIdChoice = item.provision_config?.agent_id ? String(item.provision_config.agent_id) : '__auto'
   provision.allowBuyerAgent = !!item.provision_config?.allow_buyer_agent
+  provision.maxNatMappings = item.provision_config?.max_nat_mappings ?? 0
   if (item.interface_id) loadIfaceAgents(item.interface_id)
   // 拷贝一份，避免直接编辑列表里的对象导致取消后表格也变了。
   specs.value = (item.specs ?? []).map((spec) => ({ ...spec }))
@@ -565,6 +569,7 @@ function buildProvisionConfig() {
     traffic_gb: range('traffic_gb'),
     agent_id: provision.agentIdChoice === '__auto' ? 0 : Number(provision.agentIdChoice) || 0,
     allow_buyer_agent: provision.allowBuyerAgent,
+    max_nat_mappings: Math.max(0, Math.trunc(provision.maxNatMappings) || 0),
   }
 }
 
@@ -845,6 +850,18 @@ function pickInterface(interfaceId: string) {
                     <p class="text-muted-foreground text-xs">开启后购买页显示节点选择，买家选择优先于上面的固定节点</p>
                   </div>
                   <Switch id="provision-allow-buyer-agent" v-model="provision.allowBuyerAgent" />
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="w-16 shrink-0 text-sm">NAT 上限</span>
+                  <Input
+                    id="provision-max-nat"
+                    v-model.number="provision.maxNatMappings"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-32"
+                  />
+                  <span class="text-muted-foreground text-xs">条端口转发；0 = 不限（NAT 实例生效，上游强制执行）</span>
                 </div>
                 <p class="text-muted-foreground pl-[4.5rem] text-xs">
                   <template v-if="ifaceAgentsError">节点列表加载失败：{{ ifaceAgentsError }}（将按自动分配开通）</template>

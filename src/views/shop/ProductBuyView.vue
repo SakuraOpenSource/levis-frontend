@@ -101,10 +101,11 @@ const fixedSpecs = computed(() => {
   if (!cfg.value) return []
   return [
     { label: 'CPU', value: `${formatSpec(cfg.value.cpu.min)} 核` },
-    { label: '内存', value: `${cfg.value.memory_mb.min} MB` },
-    { label: '硬盘', value: `${cfg.value.disk_gb.min} GB` },
-    { label: '带宽', value: cfg.value.bandwidth_mbps.min > 0 ? `${cfg.value.bandwidth_mbps.min} Mbps` : '不限' },
+    { label: '内存', value: `${formatSpec(cfg.value.memory_mb.min)} MB` },
+    { label: '硬盘', value: `${formatSpec(cfg.value.disk_gb.min)} GB` },
+    { label: '带宽', value: cfg.value.bandwidth_mbps.min > 0 ? `${formatSpec(cfg.value.bandwidth_mbps.min)} Mbps` : '不限' },
     { label: '流量', value: trafficLabel(cfg.value.traffic_gb.min) },
+    { label: 'NAT 转发', value: cfg.value.max_nat_mappings && cfg.value.max_nat_mappings > 0 ? `最多 ${cfg.value.max_nat_mappings} 条` : '不限' },
     { label: '驱动', value: cfg.value.driver === 'incus' ? 'Incus 容器' : 'QEMU 虚拟机' },
   ]
 })
@@ -506,6 +507,9 @@ onMounted(async () => {
               <Money class="text-xl font-semibold" :class="appliedCoupon ? 'line-through text-muted-foreground' : ''" :cents="selectedTotalCents" />
             </div>
           </div>
+          <p v-if="cfg.max_nat_mappings && cfg.max_nat_mappings > 0" class="text-muted-foreground text-xs">
+            NAT 端口转发上限：每实例最多 {{ cfg.max_nat_mappings }} 条。
+          </p>
 
           <!-- 优惠码：未应用时显示输入框，已应用时显示减免摘要。 -->
           <div v-if="!appliedCoupon" class="space-y-2">
