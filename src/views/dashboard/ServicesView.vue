@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import AutoRenewControl from '@/components/app/AutoRenewControl.vue'
+import { useAuthStore } from '@/stores/auth'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
 import Money from '@/components/app/Money.vue'
@@ -27,6 +29,8 @@ import type { Service } from '@/lib/types'
 const { t } = useI18n()
 const { cycleLabel } = useCycleLabel()
 
+const auth = useAuthStore()
+function updateService(service: Service) { items.value = items.value.map(row => row.id === service.id ? service : row) }
 const items = ref<Service[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -72,10 +76,11 @@ onMounted(() => load())
                 <TableHead class="text-right">{{ t('services.price') }}</TableHead>
                 <TableHead>{{ t('services.nextDue') }}</TableHead>
                 <TableHead>{{ t('services.createdAt') }}</TableHead>
+                <TableHead>自动续费</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableEmpty v-if="!items.length" :colspan="6">{{ t('services.empty') }}</TableEmpty>
+              <TableEmpty v-if="!items.length" :colspan="7">{{ t('services.empty') }}</TableEmpty>
               <TableRow v-for="item in items" v-else :key="item.id">
                 <TableCell class="font-medium">
                   <RouterLink
@@ -94,6 +99,7 @@ onMounted(() => load())
                 <TableCell class="text-muted-foreground text-xs tabular">
                   {{ formatDateTime(item.created_at) }}
                 </TableCell>
+                <TableCell><AutoRenewControl :service="item" :balance-cents="auth.balanceCents" compact @updated="updateService" /></TableCell>
               </TableRow>
             </TableBody>
           </Table>

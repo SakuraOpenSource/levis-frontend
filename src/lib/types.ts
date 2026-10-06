@@ -249,6 +249,7 @@ export interface Order extends Timestamps {
 }
 
 export interface Service extends Timestamps {
+  auto_renew: boolean
   user_id: number
   product_id: number
   order_id: number
@@ -450,6 +451,61 @@ export interface NatCreateInput {
    /** 上游页面控制台地址（魔方财务类上游）：有值时新窗口打开，不走站内 RFB 中继。 */
    viewer_url?: string
  }
+
+export interface ProviderSnapshot {
+  id: number
+  instance_id: number
+  agent_id: number
+  name: string
+  remark: string
+  size_bytes: number
+  status: string
+  created_at: string
+}
+export interface ProviderBackup extends ProviderSnapshot { driver: string; checksum: string }
+export interface ProviderFirewallInput {
+  direction: 'in' | 'out'
+  action: 'accept' | 'drop'
+  protocol: 'tcp' | 'udp' | 'icmp' | 'any'
+  port_start: number
+  port_end: number
+  cidr: string
+  priority: number
+  enabled: boolean
+  remark: string
+}
+export interface ProviderFirewallRule extends ProviderFirewallInput { id: number }
+
+export interface ProductChangeInput {
+  product_id: number
+  options?: Record<string, string>
+  idempotency_key?: string
+}
+export interface ProductChangeQuote {
+  /** Unix seconds from backend; absent in earlier backend handlers, never generated locally. */
+  now_s?: number
+  product_id: number
+  charge_cents: number
+  credit_cents: number
+  remaining_seconds: number
+  total_seconds: number
+  price_cents: number
+  options: Record<string, string>
+}
+export type ProductChangeStatus = 'reserved' | 'applying' | 'uncertain' | 'applied' | 'failed'
+export interface ProductChange {
+  id: number
+  service_id: number
+  product_id: number
+  operation_id: string
+  status: ProductChangeStatus
+  charge_cents: number
+  credit_cents: number
+  error: string
+  options: Record<string, string>
+  created_at?: string
+}
+export interface ProductChangeResult { change: ProductChange; service: Service }
 
 export interface RenewResult {
   service: Service
@@ -815,6 +871,42 @@ export interface InstallRequest {
   admin_username: string
   admin_email: string
   admin_password: string
+}
+
+export interface AffiliateSettings {
+  enabled: boolean
+  rate_bps: number
+  min_withdrawal_cents: number
+}
+export interface AffiliateSummary {
+  code: string
+  referral_count: number
+  balance_cents: number
+  pending_cents: number
+  total_earned_cents: number
+  settings: AffiliateSettings
+}
+export interface AffiliateCommission {
+  id: number
+  affiliate_id: number
+  user_id: number
+  order_id: number
+  amount_cents: number
+  reversed_cents: number
+  rate_bps: number
+  created_at: string
+}
+export type AffiliateWithdrawalStatus = 'pending' | 'approved' | 'rejected'
+export interface AffiliateWithdrawal {
+  id: number
+  user_id: number
+  amount_cents: number
+  account: string
+  remark: string
+  status: AffiliateWithdrawalStatus
+  review_remark: string
+  reviewed_by: number
+  created_at: string
 }
 
 export interface Page<T> {

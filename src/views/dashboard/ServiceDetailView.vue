@@ -5,6 +5,9 @@ import { useRoute } from 'vue-router'
 import { ArrowLeft, ExternalLink, HardDriveDownload, Loader2, Power, PowerOff, RefreshCcw, RotateCcw, Trash2, Zap, ZapOff } from 'lucide-vue-next'
 import RFB from '@novnc/novnc'
 
+import AutoRenewControl from '@/components/app/AutoRenewControl.vue'
+import ProductChangePanel from '@/components/app/ProductChangePanel.vue'
+import ProviderFeaturePanel from '@/components/app/ProviderFeaturePanel.vue'
 import ConfirmDialog from '@/components/app/ConfirmDialog.vue'
 import ErrorAlert from '@/components/app/ErrorAlert.vue'
 import LoadingBlock from '@/components/app/LoadingBlock.vue'
@@ -46,7 +49,16 @@ const error = ref<string | null>(null)
 /** 续费账单：创建成功后挂载 PayPanel（purpose="invoice"）统一收银，结算完成即清空。 */
 const renewInvoice = ref<Invoice | null>(null)
 const creatingRenew = ref(false)
-const walletBalance = ref(0)
+const walletBalance = ref<number | null>(null)
+const featureBusy = ref(false)
+const changeBusy = ref(false)
+const mutatingFeature = computed(() => featureBusy.value || changeBusy.value)
+async function onServiceUpdated(service: Service) {
+  item.value = service
+  try { walletBalance.value = (await walletApi.overview()).balance_cents } catch { walletBalance.value = null }
+  await loadUpstream()
+}
+async function onFeatureUpdated() { await loadUpstream() }
 
 const canRenew = computed(
   () => item.value?.status === 'active' && item.value.billing_cycle !== 'onetime',
@@ -61,7 +73,7 @@ async function load() {
       walletApi.overview().catch(() => null),
     ])
     item.value = service
-    walletBalance.value = wallet?.balance_cents ?? 0
+    walletBalance.value = wallet?.balance_cents ?? null
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -576,7 +588,7 @@ const forceTarget = ref<PowerAction | null>(null)
 const forceMessage = ref('')
 
 async function power(action: PowerAction, confirmed = false) {
-  if (!item.value || poweringAction.value) return
+  if (!item.value || poweringAction.value || mutatingFeature.value) return
   if (action === 'reinstall') {
     await openReinstall()
     return
@@ -754,7 +766,7 @@ onBeforeUnmount(() => {
     <PayPanel
        v-if="item && canRenew && !isFree && renewInvoice"
        :total-cents="renewInvoice.total_cents"
-       :balance-cents="walletBalance"
+       :balance-cents="walletBalance ?? 0"
        purpose="invoice"
        :target-id="renewInvoice.id"
        @paid="onRenewPaid"
@@ -811,13 +823,16 @@ onBeforeUnmount(() => {
         <PayPanel
           v-if="trafficInvoice"
           :total-cents="trafficInvoice.total_cents"
-          :balance-cents="walletBalance"
+          :balance-cents="walletBalance ?? 0"
           purpose="invoice"
           :target-id="trafficInvoice.id"
           @paid="onTrafficPaid"
         />
       </CardContent>
     </Card>
+    <AutoRenewControl v-if="item" :key="`renew-${item.id}`" :service="item" :balance-cents="walletBalance" @updated="onServiceUpdated" />
+    <ProductChangePanel v-if="item && canPower && item.status === 'active'" :key="`change-${item.id}`" :service="item" :balance-cents="walletBalance" :disabled="featureBusy || !!poweringAction" @busy="changeBusy = $event" @updated="onServiceUpdated" />
+    <ProviderFeaturePanel v-if="item && canPower && item.status !== 'terminated'" :key="`features-${item.id}`" :service-id="item.id" :disabled="changeBusy || !!poweringAction" @busy="featureBusy = $event" @updated="onFeatureUpdated" />
     <!-- 电源操作卡片 -->
     <Card v-if="item && canPower">
       <CardContent class="space-y-3">
@@ -836,7 +851,7 @@ onBeforeUnmount(() => {
             :key="pa.action"
             :variant="pa.danger ? 'destructive' : 'outline'"
             size="sm"
-            :disabled="poweringAction !== null"
+            :disabled="poweringAction !== null || featureBusy || changeBusy"
             @click="power(pa.action)"
           >
             <Loader2 v-if="poweringAction === pa.action" class="animate-spin" />

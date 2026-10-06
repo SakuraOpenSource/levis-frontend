@@ -1,4 +1,7 @@
 import { http, postForm } from './api'
+import type { ProviderSnapshot, ProviderBackup, ProviderFirewallRule, ProviderFirewallInput } from './types'
+import type { ProductChange, ProductChangeInput, ProductChangeQuote, ProductChangeResult } from './types'
+import type { AffiliateCommission, AffiliateSettings, AffiliateSummary, AffiliateWithdrawal, AffiliateWithdrawalStatus } from './types'
  import type {
  AdminInvoiceDetail,
  AdminStats,
@@ -149,7 +152,7 @@ export interface CaptchaAnswer {
 /** 认证与个人资料。 */
 export const authApi = {
   async register(
-    payload: { username: string; email: string; password: string; email_code?: string } & CaptchaAnswer,
+    payload: { username: string; email: string; password: string; email_code?: string; referral_code?: string } & CaptchaAnswer,
   ) {
     const { data } = await http.post<{ user: User }>('/auth/register', payload)
     return data.user
@@ -373,6 +376,30 @@ export const orderApi = {
      const { data } = await http.get<Service>(`/services/${id}`)
      return data
    },
+   async changeOptions(id: number) {
+     const { data } = await http.get<{ items: Product[] | null }>(`/services/${id}/change-options`)
+     return data.items ?? []
+   },
+   async changePreview(id: number, payload: ProductChangeInput) {
+     const { data } = await http.post<ProductChangeQuote>(`/services/${id}/change-preview`, payload)
+     return data
+   },
+   async changeProduct(id: number, payload: ProductChangeInput) {
+     const { data } = await http.post<ProductChangeResult>(`/services/${id}/change`, payload, { timeout: 2 * 60 * 60 * 1000 })
+     return data
+   },
+   async retryChange(id: number, changeId: number) {
+     const { data } = await http.post<ProductChangeResult>(`/services/${id}/change/${changeId}/retry`, {}, { timeout: 2 * 60 * 60 * 1000 })
+     return data
+   },
+   async changes(id: number) {
+     const { data } = await http.get<{ items: ProductChange[] | null }>(`/services/${id}/changes`)
+     return data.items ?? []
+   },
+   async setAutoRenew(id: number, autoRenew: boolean) {
+     const { data } = await http.patch<Service>(`/services/${id}/auto-renew`, { auto_renew: autoRenew })
+     return data
+   },
    async renew(id: number) {
      const { data } = await http.post<RenewResult>(`/services/${id}/renew`)
      return data
@@ -438,6 +465,95 @@ export const orderApi = {
      return data
    },
  }
+
+/** Only fixed customer actions; IDs are nested payloads, never URLs. */
+const featureTimeout = 2 * 60 * 60 * 1000
+export const serviceFeatureApi = {
+  async snapshots(id: number) {
+    const { data } = await http.get<{ items: ProviderSnapshot[] | null }>(`/services/${id}/features/snapshots`)
+    return data.items ?? []
+  },
+  async backups(id: number) {
+    const { data } = await http.get<{ items: ProviderBackup[] | null }>(`/services/${id}/features/backups`)
+    return data.items ?? []
+  },
+  async firewall(id: number) {
+    const { data } = await http.get<{ items: ProviderFirewallRule[] | null }>(`/services/${id}/features/firewall`)
+    return data.items ?? []
+  },
+  async createSnapshot(id: number, input: { name: string; remark?: string }) {
+    return (await http.post<ProviderSnapshot>(`/services/${id}/features/snapshot_create`, input, { timeout: featureTimeout })).data
+  },
+  async restoreSnapshot(id: number, snapshotId: number) {
+    return (await http.post(`/services/${id}/features/snapshot_restore`, { snapshot_id: snapshotId }, { timeout: featureTimeout })).data
+  },
+  async deleteSnapshot(id: number, snapshotId: number) {
+    return (await http.post(`/services/${id}/features/snapshot_delete`, { snapshot_id: snapshotId }, { timeout: featureTimeout })).data
+  },
+  async createBackup(id: number, input: { name: string; remark?: string }) {
+    return (await http.post<ProviderBackup>(`/services/${id}/features/backup_create`, input, { timeout: featureTimeout })).data
+  },
+  async restoreBackup(id: number, backupId: number) {
+    return (await http.post(`/services/${id}/features/backup_restore`, { backup_id: backupId }, { timeout: featureTimeout })).data
+  },
+  async deleteBackup(id: number, backupId: number) {
+    return (await http.post(`/services/${id}/features/backup_delete`, { backup_id: backupId }, { timeout: featureTimeout })).data
+  },
+  async createFirewall(id: number, input: ProviderFirewallInput) {
+    return (await http.post<ProviderFirewallRule>(`/services/${id}/features/firewall_create`, input, { timeout: featureTimeout })).data
+  },
+  async updateFirewall(id: number, ruleId: number, input: ProviderFirewallInput) {
+    return (await http.post<ProviderFirewallRule>(`/services/${id}/features/firewall_update`, { ...input, rule_id: ruleId }, { timeout: featureTimeout })).data
+  },
+  async deleteFirewall(id: number, ruleId: number) {
+    return (await http.post(`/services/${id}/features/firewall_delete`, { rule_id: ruleId }, { timeout: featureTimeout })).data
+  },
+  // Native same-origin navigation streams to disk with HttpOnly session cookies;
+  // no axios blob buffering, provider URL, or secret token in the query string.
+  backupDownloadUrl(id: number, backupId: number) {
+    return `/api/services/${id}/backups/${backupId}/download`
+  },
+}
+
+/** AFF 与代理权益独立；审核通过仅转入 Levis 钱包，不代表外部打款。 */
+export const affiliateApi = {
+  async summary() {
+    const { data } = await http.get<AffiliateSummary>('/affiliate')
+    return data
+  },
+  async join() {
+    const { data } = await http.post<AffiliateSummary>('/affiliate/join')
+    return data
+  },
+  async commissions(query: PageQuery = {}) {
+    const { data } = await http.get<Page<AffiliateCommission>>('/affiliate/commissions', { params: query })
+    return data
+  },
+  async withdrawals(query: PageQuery = {}) {
+    const { data } = await http.get<Page<AffiliateWithdrawal>>('/affiliate/withdrawals', { params: query })
+    return data
+  },
+  async requestWithdrawal(payload: { amount_cents: number; account: string; remark?: string }) {
+    const { data } = await http.post<AffiliateWithdrawal>('/affiliate/withdrawals', payload)
+    return data
+  },
+  async settings() {
+    const { data } = await http.get<AffiliateSettings>('/admin/settings/affiliate')
+    return data
+  },
+  async saveSettings(payload: AffiliateSettings) {
+    const { data } = await http.put<AffiliateSettings>('/admin/settings/affiliate', payload)
+    return data
+  },
+  async adminWithdrawals(query: PageQuery & { status?: AffiliateWithdrawalStatus | '' } = {}) {
+    const { data } = await http.get<Page<AffiliateWithdrawal>>('/admin/affiliate/withdrawals', { params: query })
+    return data
+  },
+  async review(id: number, payload: { action: 'approve' | 'reject'; remark?: string }) {
+    const { data } = await http.post<AffiliateWithdrawal>(`/admin/affiliate/withdrawals/${id}/review`, payload)
+    return data
+  },
+}
 
 /** 钱包。 */
 export const walletApi = {
