@@ -5,7 +5,8 @@ const props = withDefaults(defineProps<{ rows?: number }>(), { rows: 3 })
 </script>
 
 <template>
-  <div class="space-y-3" aria-busy="true">
+  <div class="space-y-3" role="status" aria-live="polite" aria-busy="true">
+    <span class="sr-only">正在加载</span>
     <Skeleton v-for="row in props.rows" :key="row" class="h-12 w-full" />
   </div>
 </template>

@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import DialogOverlay from './DialogOverlay.vue'
 
-const props = defineProps<DialogContentProps & { class?: string }>()
+const props = withDefaults(defineProps<DialogContentProps & { class?: string; showClose?: boolean }>(), { showClose: true })
 const emits = defineEmits<DialogContentEmits>()
 
 const forwarded = useForwardPropsEmits(props, emits)
@@ -33,7 +33,7 @@ const forwarded = useForwardPropsEmits(props, emits)
       "
     >
       <slot />
-      <DialogClose
+      <DialogClose v-if="props.showClose"
         class="ring-offset-background focus:ring-ring absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none"
         aria-label="关闭"
       >

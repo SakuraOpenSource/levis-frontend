@@ -68,6 +68,7 @@ const items = computed<NavItem[]>(() => [
     children: [
       { key: 'services', label: t('adminNav.business'), icon: Server, to: { name: 'admin-services' } },
       { key: 'agent-program', label: '代理管理', icon: Crown, to: { name: 'admin-agent-program' } },
+      { key: 'affiliate', label: '推广返佣（AFF）', icon: Users, to: { name: 'admin-affiliate' } },
       { key: 'articles', label: t('adminNav.articles'), icon: FileText, to: { name: 'admin-articles' } },
     ],
   },
@@ -112,6 +113,7 @@ watch(() => route.fullPath, () => (mobileOpen.value = false))
 
 <template>
   <div class="flex min-h-svh">
+    <a href="#main-content" class="skip-link">跳至主要内容</a>
     <aside
       class="bg-sidebar text-sidebar-foreground border-sidebar-border hidden w-60 shrink-0 flex-col border-r md:flex"
     >
@@ -151,7 +153,7 @@ watch(() => route.fullPath, () => (mobileOpen.value = false))
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main id="main-content" tabindex="-1" class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         <RouterView />
       </main>
     </div>

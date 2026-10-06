@@ -36,18 +36,21 @@ const emit = defineEmits<{
   confirm: []
 }>()
 
+function updateOpen(value: boolean) { if (!props.confirming) emit('update:open', value) }
+function preventBusyClose(event: Event) { if (props.confirming) event.preventDefault() }
 const { t } = useI18n()
 const cancelLabel = computed(() => props.cancelText || t('common.cancel'))
 const confirmLabel = computed(() => props.confirmText || t('common.confirm'))
 </script>
 
 <template>
-  <Dialog :open="props.open" @update:open="emit('update:open', $event)">
-    <DialogContent class="sm:max-w-md">
+  <Dialog :open="props.open" @update:open="updateOpen">
+    <DialogContent class="sm:max-w-md" :show-close="!props.confirming" @escape-key-down="preventBusyClose" @interact-outside="preventBusyClose">
       <DialogHeader>
         <DialogTitle>{{ props.title }}</DialogTitle>
         <DialogDescription>{{ props.description }}</DialogDescription>
       </DialogHeader>
+      <p v-if="props.confirming" role="status" aria-live="polite" class="text-muted-foreground text-sm">正在执行，请勿重复提交；结果未返回前无法关闭此确认框。</p>
       <DialogFooter>
         <Button type="button" variant="outline" :disabled="props.confirming" @click="emit('update:open', false)">
           {{ cancelLabel }}

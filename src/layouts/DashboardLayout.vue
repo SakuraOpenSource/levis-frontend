@@ -16,6 +16,7 @@ import {
   Store,
   Ticket,
   UserCog,
+  Users,
   Wallet,
 } from 'lucide-vue-next'
 
@@ -49,6 +50,7 @@ const items = computed<NavItem[]>(() => [
     children: [
       { key: 'wallet', label: t('sidebar.wallet'), icon: Wallet, to: { name: 'wallet' } },
       { key: 'agent-program', label: '代理加盟', icon: Crown, to: { name: 'agent-program' } },
+      { key: 'affiliate', label: '推广返佣（AFF）', icon: Users, to: { name: 'affiliate' } },
       { key: 'invoices', label: t('sidebar.invoices'), icon: FileText, to: { name: 'invoices' } },
       { key: 'refunds', label: t('sidebar.refunds'), icon: RotateCcw, to: { name: 'refunds' } },
     ],
@@ -99,6 +101,7 @@ watch(() => route.fullPath, () => (mobileOpen.value = false))
 
 <template>
   <div class="flex min-h-svh">
+    <a href="#main-content" class="skip-link">跳至主要内容</a>
     <!-- 桌面端固定侧边栏 -->
     <aside
       class="bg-sidebar text-sidebar-foreground border-sidebar-border hidden w-60 shrink-0 flex-col border-r md:flex"
@@ -139,7 +142,7 @@ watch(() => route.fullPath, () => (mobileOpen.value = false))
         </div>
       </header>
 
-      <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main id="main-content" tabindex="-1" class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <RouterView />
       </main>
     </div>

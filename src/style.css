@@ -208,8 +208,14 @@ button:not(:disabled):active,
   animation: soft-fade-in 200ms ease-out both;
 }
 
-/* 系统开启“减弱动态效果”时全部关闭。 */
+/* 键盘访问与可见焦点，不依赖 hover 或动画。 */
+.skip-link { position: fixed; top: 0.5rem; left: 0.5rem; z-index: 200; padding: 0.75rem 1rem; background: var(--background); color: var(--foreground); border: 2px solid var(--ring); border-radius: var(--radius); transform: translateY(-200%); }
+.skip-link:focus { transform: none; }
+select:focus-visible, input[type='checkbox']:focus-visible, a:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+
+/* 包括第三方对话框、旋转加载图标与伪元素；状态始终另有可读文本。 */
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   main > *,
   [class*='animate-pulse'],
   [class*='Skeleton'] {
