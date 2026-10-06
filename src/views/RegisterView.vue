@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/lib/api'
+import { readReferral } from '@/lib/utils'
 import { emailApi } from '@/lib/endpoints'
 import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
@@ -20,7 +21,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const site = useSiteStore()
 
-const form = reactive({ username: '', email: '', password: '', confirm: '', emailCode: '' })
+const form = reactive({ username: '', email: '', password: '', confirm: '', emailCode: '', referralCode: readReferral() })
 const captcha = reactive({ id: '', code: '' })
 const captchaField = ref<InstanceType<typeof CaptchaField> | null>(null)
 const error = ref<string | null>(null)
@@ -92,6 +93,7 @@ async function submit() {
       username: form.username.trim(),
       email: form.email.trim(),
       password: form.password,
+      referral_code: form.referralCode,
       ...(emailCodeRequired() ? { email_code: form.emailCode.trim() } : {}),
       ...(site.captchaRegister
         ? { captcha_id: captcha.id, captcha_code: captcha.code.trim() }
@@ -129,6 +131,12 @@ async function submit() {
           <div class="space-y-2">
             <Label for="email">{{ t('auth.email') }}</Label>
             <Input id="email" v-model="form.email" type="email" autocomplete="email" required />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="referral-code">推广邀请码（可选）</Label>
+            <Input id="referral-code" v-model="form.referralCode" maxlength="256" autocomplete="off" :disabled="submitting" aria-describedby="referral-hint" />
+            <p id="referral-hint" class="text-muted-foreground text-xs">从推广链接带入，可在注册前修改或清空；有效归属注册成功后不可更改。</p>
           </div>
 
           <div v-if="emailCodeRequired()" class="space-y-2">

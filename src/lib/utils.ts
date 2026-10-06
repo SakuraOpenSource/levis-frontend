@@ -17,6 +17,33 @@ export function formatCents(cents: number, currency = '¥') {
   return negative ? `-${text}` : text
 }
 
+/** 十进制金额输入：只接受至多两位小数，绝不通过浮点乘法或四舍五入扣款。 */
+export function parseMoneyCents(value: string): number | null {
+  const text = value.trim()
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null
+  const [whole = '0', fraction = ''] = text.split('.')
+  const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'))
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) return null
+  return Number(cents)
+}
+
+/** 推广归因只保存邀请码，不保存访问 URL 或认证信息。存储被浏览器禁用时仍可继续注册。 */
+const REFERRAL_KEY = 'levis_referral_code'
+let referralFallback = ''
+export function captureReferral(search: string) {
+  const code = new URLSearchParams(search).get('ref')
+  if (!code || code.length > 256) return
+  referralFallback = code
+  try { localStorage.setItem(REFERRAL_KEY, code) } catch { /* 隐私模式降级 */ }
+}
+export function readReferral(): string {
+  try { return localStorage.getItem(REFERRAL_KEY) ?? referralFallback } catch { return referralFallback }
+}
+export function clearReferral() {
+  referralFallback = ''
+  try { localStorage.removeItem(REFERRAL_KEY) } catch { /* 不阻止注册成功 */ }
+}
+
 /** 日期时间：按浏览器时区渲染 UTC 时间戳。 */
 export function formatDateTime(value?: string | null) {
   if (!value) return '-'

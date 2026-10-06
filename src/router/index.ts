@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
 import { useSiteStore } from '@/stores/site'
+import { captureReferral } from '@/lib/utils'
 
 /**
  * 路由元信息：
@@ -108,6 +109,11 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboard/ServiceDetailView.vue'),
       },
       {
+        path: 'affiliate',
+        name: 'affiliate',
+        component: () => import('@/views/dashboard/AffiliateView.vue'),
+      },
+      {
         path: 'agent-program',
         name: 'agent-program',
         component: () => import('@/views/dashboard/AgentProgramView.vue'),
@@ -176,6 +182,11 @@ const routes: RouteRecordRaw[] = [
         path: 'categories',
         name: 'admin-categories',
         component: () => import('@/views/admin/CategoriesView.vue'),
+      },
+      {
+        path: 'affiliate',
+        name: 'admin-affiliate',
+        component: () => import('@/views/admin/AffiliateView.vue'),
       },
       {
         path: 'agent-program',
@@ -263,6 +274,9 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (typeof to.query.ref === 'string') {
+    captureReferral(new URLSearchParams({ ref: to.query.ref }).toString())
+  }
   const site = useSiteStore()
   const auth = useAuthStore()
 

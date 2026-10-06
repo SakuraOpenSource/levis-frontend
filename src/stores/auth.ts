@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import { authApi, type CaptchaAnswer } from '@/lib/endpoints'
 import type { User } from '@/lib/types'
+import { clearReferral, readReferral } from '@/lib/utils'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -45,9 +46,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(
-    payload: { username: string; email: string; password: string } & CaptchaAnswer,
+    payload: { username: string; email: string; password: string; email_code?: string; referral_code?: string } & CaptchaAnswer,
   ) {
-    user.value = await authApi.register(payload)
+    const code = payload.referral_code ?? readReferral()
+    user.value = await authApi.register({ ...payload, ...(code ? { referral_code: code } : {}) })
+    clearReferral()
     resolved.value = true
     return user.value
   }
