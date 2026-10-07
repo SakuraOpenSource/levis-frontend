@@ -117,6 +117,12 @@ export interface ProvisionConfig {
   allow_buyer_agent?: boolean
   /** NAT 实例允许创建的端口转发条数上限；0/缺省表示不限（virtualis 接口商品）。 */
   max_nat_mappings?: number
+  /** 管理员固定网络预设；独立 IP 在每次开通时从所选节点的地址池分配。 */
+  network_mode?: 'nat' | 'dedicated'
+  dedicated_mode?: 'auto' | 'routed' | 'bridge'
+  network_bridge?: string
+  network_dns?: string[]
+  security_group_ids?: number[]
 }
 
 /** 「接口管理」里的一条上游接口。 */
@@ -475,6 +481,22 @@ export interface ProviderFirewallInput {
   remark: string
 }
 export interface ProviderFirewallRule extends ProviderFirewallInput { id: number }
+
+export interface ProviderFirewallPolicy { ingress: 'accept' | 'drop'; egress: 'accept' | 'drop' }
+export interface ProviderSecurityGroup {
+  id: number
+  name: string
+  description: string
+  ingress_policy: 'accept' | 'drop'
+  egress_policy: 'accept' | 'drop'
+  rules: ProviderFirewallRule[]
+}
+export interface ProviderSecurityGroupBinding {
+  security_group_ids: number[]
+  groups: ProviderSecurityGroup[]
+  effective_rules: ProviderFirewallRule[]
+  firewall_policy: ProviderFirewallPolicy | null
+}
 
 export interface ProductChangeInput {
   product_id: number

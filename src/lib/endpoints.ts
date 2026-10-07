@@ -1,5 +1,5 @@
 import { http, postForm } from './api'
-import type { ProviderSnapshot, ProviderBackup, ProviderFirewallRule, ProviderFirewallInput } from './types'
+import type { ProviderSnapshot, ProviderBackup, ProviderFirewallRule, ProviderFirewallInput, ProviderSecurityGroup, ProviderSecurityGroupBinding } from './types'
 import type { ProductChange, ProductChangeInput, ProductChangeQuote, ProductChangeResult } from './types'
 import type { AffiliateCommission, AffiliateSettings, AffiliateSummary, AffiliateWithdrawal, AffiliateWithdrawalStatus } from './types'
  import type {
@@ -481,6 +481,11 @@ export const serviceFeatureApi = {
     const { data } = await http.get<{ items: ProviderFirewallRule[] | null }>(`/services/${id}/features/firewall`)
     return data.items ?? []
   },
+  /** 只读展示管理员绑定的安全组与真实生效规则，不提供全局安全组写操作。 */
+  async securityGroups(id: number): Promise<ProviderSecurityGroupBinding> {
+    const { data } = await http.get<ProviderSecurityGroupBinding>(`/services/${id}/features/security_groups`)
+    return { security_group_ids: data.security_group_ids ?? [], groups: data.groups ?? [], effective_rules: data.effective_rules ?? [], firewall_policy: data.firewall_policy ?? null }
+  },
   async createSnapshot(id: number, input: { name: string; remark?: string }) {
     return (await http.post<ProviderSnapshot>(`/services/${id}/features/snapshot_create`, input, { timeout: featureTimeout })).data
   },
@@ -795,6 +800,10 @@ export const adminApi = {
   },
   async interfaces() {
     const { data } = await http.get<{ items: UpstreamInterface[] | null }>('/admin/interfaces')
+    return data.items ?? []
+  },
+  async interfaceSecurityGroups(id: number) {
+    const { data } = await http.get<{ items: ProviderSecurityGroup[] | null }>(`/admin/interfaces/${id}/security-groups`)
     return data.items ?? []
   },
   async createInterface(payload: { name: string; plugin_id: string; config: Record<string, string> }) {
