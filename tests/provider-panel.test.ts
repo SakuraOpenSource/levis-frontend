@@ -45,3 +45,20 @@ it('surfaces unsupported/error states and sends complete false-preserving firewa
   expect(calls.find(c => c.url?.endsWith('firewall_update'))?.body).toEqual({ ...rule, enabled: false, rule_id: 10, id: undefined })
   wrapper.unmount()
 })
+it('displays inherited security group defaults and effective rules without global write controls', async () => {
+  const calls: string[] = []
+  http.defaults.adapter = async config => {
+    calls.push(config.url ?? '')
+    const data = config.url?.endsWith('security_groups') ? { security_group_ids: [3], groups: [{ id: 3, name: 'SSH only', description: '管理员网络模板', ingress_policy: 'drop', egress_policy: 'accept', rules: [] }], effective_rules: [{ id: 10, direction: 'in', protocol: 'tcp', action: 'accept', port_start: 22, port_end: 22, enabled: true, priority: 100, cidr: '', remark: '' }], firewall_policy: { ingress: 'drop', egress: 'accept' } } : { items: [] }
+    return { data, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  const wrapper = mount(module.default, { props: { serviceId: 4 }, global: { plugins: [i18n], stubs: { ConfirmDialog: confirm } } })
+  await flushPromises()
+  await wrapper.get('[data-testid="firewall-tab"]').trigger('keydown', { key: 'Enter' }); await flushPromises()
+  expect(calls).toContain('/services/4/features/security_groups')
+  expect(wrapper.text()).toContain('SSH only')
+  expect(wrapper.text()).toContain('默认入站：丢弃')
+  expect(wrapper.text()).toContain('默认出站：允许')
+  expect(wrapper.find('[data-testid="detach-security-group"]').exists()).toBe(false)
+  wrapper.unmount()
+})

@@ -22,3 +22,14 @@ it('uses fixed customer feature actions and authenticated download links', async
   expect(api?.purge).toBeUndefined()
   expect(api?.migrate).toBeUndefined()
 })
+it('reads inherited security groups through fixed service and admin-interface routes', async () => {
+  const calls: string[] = []
+  http.defaults.adapter = async config => {
+    calls.push(config.url ?? '')
+    return { data: config.url?.startsWith('/admin/') ? { items: null } : { security_group_ids: [3], groups: [{ id: 3, name: 'SSH', ingress_policy: 'drop', egress_policy: 'accept', rules: [] }], effective_rules: null, firewall_policy: { ingress: 'drop', egress: 'accept' } }, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  expect(await api?.securityGroups?.(4)).toMatchObject({ security_group_ids: [3], effective_rules: [], firewall_policy: { ingress: 'drop', egress: 'accept' } })
+  const admin = (endpoints as any).adminApi
+  expect(await admin?.interfaceSecurityGroups?.(2)).toEqual([])
+  expect(calls).toEqual(['/services/4/features/security_groups', '/admin/interfaces/2/security-groups'])
+})
