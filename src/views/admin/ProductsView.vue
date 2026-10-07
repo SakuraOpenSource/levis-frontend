@@ -10,6 +10,7 @@ import Money from '@/components/app/Money.vue'
 import PageHeader from '@/components/app/PageHeader.vue'
 import Pager from '@/components/app/Pager.vue'
 import StateBadge from '@/components/app/StateBadge.vue'
+import VirtualisProductNetworkFields from '@/components/app/VirtualisProductNetworkFields.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -41,6 +42,7 @@ import { errorMessage, http } from '@/lib/api'
 import { adminApi } from '@/lib/endpoints'
  import type { BatchResult } from '@/lib/endpoints'
 import { REGIONS, regionInfo } from '@/lib/regions'
+import { productNetworkFromConfig, productNetworkPayload, validateProductNetwork } from '@/lib/product-network'
  import {
    BILLING_CYCLES,
    type Article,
@@ -150,6 +152,8 @@ const upstreamLoading = ref(false)
 const syncingInfo = ref<number | null>(null)
  /** 接口管理里的接口列表：接口商品走这里而不是直接选插件。 */
  const interfaces = ref<UpstreamInterface[]>([])
+const isVirtualisInterface = computed(() => interfaces.value.some(iface => String(iface.id) === form.interfaceId && iface.plugin_id === 'virtualis'))
+const networkPreset = ref(productNetworkFromConfig())
  /** 购买协议候选：全部文章（含草稿，标出状态），空表示无需协议。 */
  const agreementArticles = ref<Article[]>([])
 /** 流量统一按 GB 录入、保存与展示。 */
@@ -280,12 +284,14 @@ function openCreate() {
      region: '',
    })
   Object.assign(provision, emptyProvision())
+  networkPreset.value = productNetworkFromConfig()
   specs.value = []
   dialogOpen.value = true
 }
 
 function openEdit(item: Product) {
   editing.value = item
+  networkPreset.value = productNetworkFromConfig(item.provision_config)
   formError.value = null
    Object.assign(form, {
      categoryId: String(item.category_id),
@@ -335,6 +341,10 @@ async function save() {
   if (!form.name.trim() || !form.categoryId) {
     formError.value = t('error.required')
     return
+  }
+  if (isVirtualisInterface.value) {
+    const networkError = validateProductNetwork(networkPreset.value)
+    if (networkError) { formError.value = networkError; return }
   }
   // 元 → 分，四舍五入避免 19.99 * 100 的浮点误差。
   const priceCents = Math.round(Number(form.priceYuan) * 100)
@@ -569,13 +579,15 @@ function buildProvisionConfig() {
     traffic_gb: range('traffic_gb'),
     agent_id: provision.agentIdChoice === '__auto' ? 0 : Number(provision.agentIdChoice) || 0,
     allow_buyer_agent: provision.allowBuyerAgent,
-    max_nat_mappings: Math.max(0, Math.trunc(provision.maxNatMappings) || 0),
+    max_nat_mappings: isVirtualisInterface.value && networkPreset.value.network_mode === 'dedicated' ? 0 : Math.max(0, Math.trunc(provision.maxNatMappings) || 0),
+    ...(isVirtualisInterface.value ? productNetworkPayload(networkPreset.value) : {}),
   }
 }
 
 /** 选择接口后清掉传统上游绑定，两者互斥；同时拉取该接口上游的节点列表。 */
 function pickInterface(interfaceId: string) {
   form.interfaceId = interfaceId
+  networkPreset.value = productNetworkFromConfig()
   provision.agentIdChoice = '__auto'
   if (interfaceId) {
     form.upstreamPluginId = ''
@@ -851,7 +863,7 @@ function pickInterface(interfaceId: string) {
                   </div>
                   <Switch id="provision-allow-buyer-agent" v-model="provision.allowBuyerAgent" />
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
+                <div v-if="!isVirtualisInterface || networkPreset.network_mode === 'nat'" class="flex flex-wrap items-center gap-2">
                   <span class="w-16 shrink-0 text-sm">NAT 上限</span>
                   <Input
                     id="provision-max-nat"
@@ -869,6 +881,7 @@ function pickInterface(interfaceId: string) {
                   <template v-else>实例将固定落在所选节点（选自动分配则由上游决定）；买家不可自选。</template>
                 </p>
               </div>
+              <VirtualisProductNetworkFields v-if="isVirtualisInterface" v-model="networkPreset" :interface-id="Number(form.interfaceId)" />
               <div v-for="field in PROVISION_FIELDS" :key="field.key" class="space-y-2 rounded-md border p-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="w-16 shrink-0 text-sm">{{ field.label }}</span>

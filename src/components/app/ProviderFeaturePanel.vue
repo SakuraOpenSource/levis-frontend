@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { serviceFeatureApi as api } from '@/lib/endpoints'
 import { errorMessage } from '@/lib/api'
-import type { ProviderSnapshot, ProviderBackup, ProviderFirewallRule, ProviderFirewallInput } from '@/lib/types'
+import type { ProviderSnapshot, ProviderBackup, ProviderFirewallRule, ProviderFirewallInput, ProviderSecurityGroupBinding } from '@/lib/types'
 import { formatBytes, formatDateTime } from '@/lib/utils'
 
 const props = withDefaults(defineProps<{ serviceId: number; disabled?: boolean }>(), { disabled: false })
@@ -20,10 +20,11 @@ const tab = ref('recovery')
 const snapshots = ref<ProviderSnapshot[]>([])
 const backups = ref<ProviderBackup[]>([])
 const rules = ref<ProviderFirewallRule[]>([])
+const securityGroups = ref<ProviderSecurityGroupBinding | null>(null)
 const loading = ref(false)
 const busy = ref(false)
 const locked = computed(() => busy.value || props.disabled)
-const errors = reactive({ snapshots: '', backups: '', firewall: '' })
+const errors = reactive({ snapshots: '', backups: '', firewall: '', securityGroups: '' })
 const error = ref<string | null>(null)
 const notice = ref('')
 const name = ref('')
@@ -47,6 +48,7 @@ async function load() {
     api.snapshots(id).then(rows => { if (request === version) { snapshots.value = rows; errors.snapshots = '' } }).catch(err => { if (request === version) errors.snapshots = errorMessage(err) }),
     api.backups(id).then(rows => { if (request === version) { backups.value = rows; errors.backups = '' } }).catch(err => { if (request === version) errors.backups = errorMessage(err) }),
     api.firewall(id).then(rows => { if (request === version) { rules.value = rows; errors.firewall = '' } }).catch(err => { if (request === version) errors.firewall = errorMessage(err) }),
+    api.securityGroups(id).then(binding => { if (request === version) { securityGroups.value = binding; errors.securityGroups = '' } }).catch(err => { if (request === version) { securityGroups.value = null; errors.securityGroups = errorMessage(err) } }),
   ])
   if (request === version) loading.value = false
 }
@@ -110,6 +112,7 @@ async function confirm() {
 }
 watch(() => props.serviceId, () => {
   snapshots.value = []; backups.value = []; rules.value = []
+  securityGroups.value = null
   error.value = null; notice.value = ''; confirmOpen.value = false; pending.value = null
   name.value = ''; remark.value = ''; resetRule()
   void load()
@@ -144,6 +147,17 @@ onBeforeUnmount(() => { version++ })
         </section>
       </TabsContent>
       <TabsContent value="firewall" class="space-y-4">
+        <section class="space-y-3 rounded-md border p-3" aria-label="安全组与生效网络策略">
+          <h3 class="text-sm font-semibold">安全组与生效网络策略</h3>
+          <ErrorAlert :message="errors.securityGroups" />
+          <template v-if="securityGroups && !loading">
+            <p v-if="securityGroups.firewall_policy" class="text-xs text-muted-foreground">默认入站：{{ securityGroups.firewall_policy.ingress === 'drop' ? '丢弃' : '允许' }} · 默认出站：{{ securityGroups.firewall_policy.egress === 'drop' ? '丢弃' : '允许' }}</p>
+            <p v-if="!securityGroups.groups.length" class="text-xs text-muted-foreground">未绑定安全组；下方为实例自定义防火墙规则。</p>
+            <div v-for="group in securityGroups.groups" :key="group.id" class="rounded-md bg-muted/40 p-2 text-sm"><span class="font-medium">{{ group.name }}</span><span class="ml-2 text-xs text-muted-foreground">#{{ group.id }}</span><p v-if="group.description" class="mt-1 text-xs text-muted-foreground">{{ group.description }}</p></div>
+            <p v-if="securityGroups.groups.length" class="text-xs text-muted-foreground">安全组由管理员绑定并在上游统一管理；此处只读展示。组与实例规则按上游优先级合并。</p>
+            <div v-if="securityGroups.effective_rules.length" class="space-y-2"><h4 class="text-xs font-medium">合并后的生效规则</h4><p v-for="(row, index) in securityGroups.effective_rules" :key="`${row.id}-${index}`" data-testid="effective-firewall-rule" class="rounded-md border p-2 text-xs">{{ row.direction === 'in' ? '入站' : '出站' }} · {{ row.action === 'accept' ? '允许' : '丢弃' }} · {{ row.protocol }} · 端口 {{ row.port_start || '全部' }}{{ row.port_end > row.port_start ? `–${row.port_end}` : '' }} · {{ row.cidr || '所有网段' }} · 优先级 {{ row.priority }}{{ row.enabled ? '' : '（禁用）' }}</p></div>
+          </template>
+        </section>
         <ErrorAlert :message="errors.firewall" />
         <p class="text-xs text-muted-foreground">防火墙变更可能阻断远程连接。停机保存，运行中尝试同步；若同步失败，请刷新核对，不能将错误当成功。</p>
         <form @submit.prevent="saveRule"><fieldset :disabled="locked || !!errors.firewall || loading" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
