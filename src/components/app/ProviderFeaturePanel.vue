@@ -16,6 +16,16 @@ import { formatBytes, formatDateTime } from '@/lib/utils'
 
 const props = withDefaults(defineProps<{ serviceId: number; disabled?: boolean }>(), { disabled: false })
 const emit = defineEmits<{ updated: []; busy: [value: boolean] }>()
+
+// Provider success state contract (audit F03/PLG-F03): the Virtualis backend and
+// the plugin always report recovery points as status "available" (recovery.go /
+// backup.go persist "available"; payload.go passes status through untouched).
+// "ready" is kept ONLY as a legacy alias for old cached rows from earlier builds;
+// it can be removed once no pre-fix response can still be in flight (one release
+// after 2026-10 should be enough). Unknown/creating/error states stay locked.
+const RECOVERY_READY_STATES = ['available', 'ready']
+const isRecoveryReady = (status: string) => RECOVERY_READY_STATES.includes(status)
+
 const tab = ref('recovery')
 const snapshots = ref<ProviderSnapshot[]>([])
 const backups = ref<ProviderBackup[]>([])
@@ -140,10 +150,10 @@ onBeforeUnmount(() => { version++ })
           <div class="flex gap-2 sm:col-span-2"><Button :disabled="!validName || !!errors.snapshots || loading || locked" @click="askCreate('snapshot')">创建快照</Button><Button variant="outline" :disabled="!validName || !!errors.backups || loading || locked" @click="askCreate('backup')">创建备份</Button></div>
         </fieldset>
         <section class="space-y-3" aria-label="快照列表"><h3 class="text-sm font-semibold">快照</h3><ErrorAlert :message="errors.snapshots" /><p v-if="!loading && !errors.snapshots && !snapshots.length" class="text-sm text-muted-foreground">暂无快照</p>
-          <div v-for="row in snapshots" :key="row.id" class="space-y-2 rounded-lg border p-3"><p class="text-sm font-medium">{{ row.name }} · {{ row.status }}</p><p class="text-xs text-muted-foreground">{{ row.size_bytes > 0 ? formatBytes(row.size_bytes) : '大小未知' }} · {{ formatDateTime(row.created_at) }}</p><p v-if="row.remark" class="break-all text-xs">{{ row.remark }}</p><div class="flex gap-2"><Button size="sm" variant="outline" :disabled="locked || row.status !== 'ready'" :data-testid="`restore-snapshot-${row.id}`" @click="askRestore('snapshot', row)">恢复快照</Button><Button size="sm" variant="ghost" :disabled="locked" @click="askDelete('snapshot', row)">删除</Button></div></div>
+          <div v-for="row in snapshots" :key="row.id" class="space-y-2 rounded-lg border p-3"><p class="text-sm font-medium">{{ row.name }} · {{ row.status }}</p><p class="text-xs text-muted-foreground">{{ row.size_bytes > 0 ? formatBytes(row.size_bytes) : '大小未知' }} · {{ formatDateTime(row.created_at) }}</p><p v-if="row.remark" class="break-all text-xs">{{ row.remark }}</p><div class="flex gap-2"><Button size="sm" variant="outline" :disabled="locked || !isRecoveryReady(row.status)" :data-testid="`restore-snapshot-${row.id}`" @click="askRestore('snapshot', row)">恢复快照</Button><Button size="sm" variant="ghost" :disabled="locked" @click="askDelete('snapshot', row)">删除</Button></div></div>
         </section>
         <section class="space-y-3" aria-label="备份列表"><h3 class="text-sm font-semibold">备份</h3><ErrorAlert :message="errors.backups" /><p v-if="!loading && !errors.backups && !backups.length" class="text-sm text-muted-foreground">暂无备份</p>
-          <div v-for="row in backups" :key="row.id" class="space-y-2 rounded-lg border p-3"><p class="text-sm font-medium">{{ row.name }} · {{ row.status }}</p><p class="text-xs text-muted-foreground">{{ row.size_bytes > 0 ? formatBytes(row.size_bytes) : '大小未知' }} · {{ row.driver }} · {{ formatDateTime(row.created_at) }}</p><p v-if="row.remark" class="break-all text-xs">{{ row.remark }}</p><p v-if="row.checksum" class="break-all font-mono text-xs text-muted-foreground">SHA-256：{{ row.checksum }}</p><div class="flex flex-wrap items-center gap-2"><a v-if="row.status === 'ready'" :href="api.backupDownloadUrl(serviceId, row.id)" download class="inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm underline underline-offset-4 focus-visible:ring-2"><Download class="size-4" />下载归档</a><Button size="sm" variant="outline" :disabled="locked || row.status !== 'ready'" :data-testid="`restore-backup-${row.id}`" @click="askRestore('backup', row)">恢复备份</Button><Button size="sm" variant="ghost" :disabled="locked" @click="askDelete('backup', row)">删除</Button></div></div>
+          <div v-for="row in backups" :key="row.id" class="space-y-2 rounded-lg border p-3"><p class="text-sm font-medium">{{ row.name }} · {{ row.status }}</p><p class="text-xs text-muted-foreground">{{ row.size_bytes > 0 ? formatBytes(row.size_bytes) : '大小未知' }} · {{ row.driver }} · {{ formatDateTime(row.created_at) }}</p><p v-if="row.remark" class="break-all text-xs">{{ row.remark }}</p><p v-if="row.checksum" class="break-all font-mono text-xs text-muted-foreground">SHA-256：{{ row.checksum }}</p><div class="flex flex-wrap items-center gap-2"><a v-if="isRecoveryReady(row.status)" :href="api.backupDownloadUrl(serviceId, row.id)" download class="inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm underline underline-offset-4 focus-visible:ring-2"><Download class="size-4" />下载归档</a><Button size="sm" variant="outline" :disabled="locked || !isRecoveryReady(row.status)" :data-testid="`restore-backup-${row.id}`" @click="askRestore('backup', row)">恢复备份</Button><Button size="sm" variant="ghost" :disabled="locked" @click="askDelete('backup', row)">删除</Button></div></div>
         </section>
       </TabsContent>
       <TabsContent value="firewall" class="space-y-4">

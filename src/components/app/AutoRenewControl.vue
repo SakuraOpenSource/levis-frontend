@@ -16,7 +16,14 @@ const busy = ref(false)
 const open = ref(false)
 const target = ref(false)
 const error = ref<string | null>(null)
-const eligible = computed(() => props.service.billing_cycle !== 'onetime' && (props.service.status === 'active' || props.service.auto_renew))
+// Mirror the backend eligibility rule exactly (internal/service/auto_renew.go:12-18):
+// enabling auto-renew is allowed while active, or while suspended with
+// suspend_reason "expired" — the scheduler deliberately keeps this grace-window
+// rescue path so an expired service can still be auto-renewed before deletion.
+// The UI must not silently drop a recovery path the backend offers (audit F5).
+// Keeping `|| auto_renew` lets an already-enabled service be turned OFF even if
+// its status later drifts outside the eligible window.
+const eligible = computed(() => props.service.billing_cycle !== 'onetime' && (props.service.status === 'active' || (props.service.status === 'suspended' && props.service.suspend_reason === 'expired') || props.service.auto_renew))
 const insufficient = computed(() => props.balanceCents !== null && props.balanceCents < props.service.price_cents)
 function ask() {
   if (!eligible.value || busy.value) return

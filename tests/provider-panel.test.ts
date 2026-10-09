@@ -12,13 +12,21 @@ it('loads customer recovery data, confirms restore, and keeps authenticated down
   http.defaults.adapter = async config => {
     calls.push({ url: config.url, body: config.data ? JSON.parse(config.data) : undefined })
     if (config.url?.endsWith('backup_restore')) await new Promise<void>(resolve => { finish = resolve })
-    const data = config.url?.endsWith('snapshots') ? { items: [{ id: 8, name: 'snap-8', size_bytes: 0, status: 'ready' }] } : config.url?.endsWith('backups') ? { items: [{ id: 9, name: 'backup-9', size_bytes: 1024, status: 'ready' }] } : { items: [] }
+    const data = config.url?.endsWith('snapshots') ? { items: [{ id: 8, name: 'snap-8', size_bytes: 0, status: 'available' }, { id: 7, name: 'snap-7', size_bytes: 4096, status: 'creating' }] } : config.url?.endsWith('backups') ? { items: [{ id: 9, name: 'backup-9', size_bytes: 1024, status: 'available' }] } : { items: [] }
+    // "available" is the provider success state the Virtualis backend actually
+    // persists; fixtures using the legacy alias "ready" hid the broken status
+    // checks (audit PLG-F03), so this test pins the literal.
     return { data, status: 200, statusText: 'OK', headers: {}, config }
   }
   const wrapper = mount(module.default, { props: { serviceId: 4 }, global: { plugins: [i18n], stubs: { ConfirmDialog: confirm } } })
   await flushPromises()
   expect(wrapper.text()).toContain('大小未知')
   expect(wrapper.get('a[download]').attributes('href')).toBe('/api/services/4/backups/9/download')
+  // Success-state rows expose an enabled restore control; in-progress rows stay locked.
+  expect(wrapper.get('[data-testid="restore-backup-9"]').attributes('disabled')).toBeUndefined()
+  expect(wrapper.get('[data-testid="restore-snapshot-8"]').attributes('disabled')).toBeUndefined()
+  expect(wrapper.get('[data-testid="restore-snapshot-7"]').attributes('disabled')).toBeDefined()
+  expect(wrapper.findAll('a[download]')).toHaveLength(1)
   await wrapper.get('[data-testid="restore-backup-9"]').trigger('click')
   expect(calls.some(c => c.url?.endsWith('backup_restore'))).toBe(false)
   await wrapper.get('[data-testid="confirm"]').trigger('click'); await flushPromises()
