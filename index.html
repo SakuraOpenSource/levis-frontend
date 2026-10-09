@@ -1,10 +1,15 @@
 <!doctype html>
-<html lang="en">
+<!-- lang must match the app's only locale (zh-CN, src/locales/index.ts): it drives
+     assistive-tech pronunciation per WCAG 3.1.1. The static title is only the
+     pre-bootstrap fallback/branding default ("Levis", same default as the site
+     store); the configured site name overwrites document.title once /api/bootstrap
+     loads, so do NOT treat this tag as the site-name setting. -->
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>levis-tmp</title>
+    <title>Levis</title>
   </head>
   <body>
     <div id="app"></div>
